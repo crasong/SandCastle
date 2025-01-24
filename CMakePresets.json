@@ -5,12 +5,41 @@
             "name": "default",
             "description": "Default settings for SandCastle",
             "hidden": false,
-            "generator": "Visual Studio 17 2022",
+            "generator": "MinGW Makefiles",
             "binaryDir": "${workspaceFolder}/build",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "YES"
             }
+        },
+        {
+            "name": "x64-windows",
+            "description": "Default settings for SandCastle",
+            "generator": "Visual Studio 17 2022",
+            "inherits": [ "default" ],
+            "architecture":{
+                "value": "x64",
+                "strategy": "set"
+            },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "YES"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "core-build",
+            "description": "Inherits environment from base configurePreset",
+            "configurePreset": "default",
+            "hidden": true
+        },
+        {
+            "name": "clean-build",
+            "description": "",
+            "configurePreset": "x64-windows",
+            "inherits": "core-build",
+            "cleanFirst": true
         }
     ]
 }
