@@ -1,2 +1,2 @@
 # SandCastle
- Educational sandbox game project
+ Sandbox game project to learn how to setup a project using CMake and libraries
