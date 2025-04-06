@@ -1,40 +1,24 @@
-cmake_minimum_required(VERSION 3.5.0)
-project(SandCastle_core VERSION 0.1.0 LANGUAGES C CXX)
-
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 include(CTest)
 enable_testing()
 
-#add_executable(SandCastle main.cpp)
+# Define game engine sources
+set(SOURCES 
+    main.cpp
+    Engine.cpp
+    Game.cpp
+)
 
-#set_property(TARGET SandCastle PROPERTY CXX_STANDARD_REQUIRED 23)
+set(HEADERS 
+    Engine.h 
+    Game.h
+)
 
-file(TO_NATIVE_PATH "${STAGED_INSTALL_PREFIX}/lib/cmake/glfw3" glfw3_DIR)
-file(TO_NATIVE_PATH "${STAGED_INSTALL_PREFIX}/lib/cmake/glew" GLEW_DIR)
+add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
-message(STATUS "glfw3_DIR is... ${glfw3_DIR}")
-message(STATUS "GLEW_DIR is... ${GLEW_DIR}")
+target_link_libraries(SandCastle PRIVATE SDL3::SDL3)
 
-find_package(glfw3 REQUIRED CONFIG)
+# Needed to prevent SDL from overriding main()
+target_compile_definitions(SandCastle PRIVATE SDL_MAIN_HANDLED)
 
-set(GLEW_USE_STATIC_LIBS ON)
-find_package(GLEW REQUIRED CONFIG)
-
-set(SRCS main.cpp)
-
-if(APPLE)
-    # create bundle on apple compiles
-    add_executable(main MACOSX_BUNDLE ${SRCS})
-
-    # Set a custom plist file for the app bundle - needed for Mac OS Retina display
-    set_target_properties(main PROPERTIES MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist)
-elseif(WIN32)
-    add_executable(main ${SRCS})
-else()
-    # No WIN32! We don't want WinMain() with GLFW.
-    add_executable(main ${SRCS} main.exe.manifest)
-endif()
-
-target_link_libraries(main PRIVATE GLEW::glew_s glfw)
+# Include SDL headers
+target_include_directories(SandCastle PRIVATE ${sdl3_SOURCE_DIR}/include)

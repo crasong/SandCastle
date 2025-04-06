@@ -9,7 +9,8 @@
                 "--build",
                 "build",
                 "-j",
-                "12"
+                "12",
+                "-I${workspaceFolder}/external/sdl3-src/include"
             ],
             "group": {
                 "kind": "build",

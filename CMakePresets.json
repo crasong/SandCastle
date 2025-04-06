@@ -1,45 +1,57 @@
 {
     "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 23,
+        "patch": 0
+    },
     "configurePresets": [
         {
             "name": "default",
-            "description": "Default settings for SandCastle",
+            "description": "Default build",
             "hidden": false,
-            "generator": "MinGW Makefiles",
+            "generator": "Ninja",
             "binaryDir": "${workspaceFolder}/build",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "YES"
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CMAKE_CXX_STANDARD": "23"
             }
         },
         {
-            "name": "x64-windows",
-            "description": "Default settings for SandCastle",
+            "name": "vs2022",
+            "displayName": "Visual Studio 2022",
+            "description": "Use the Visual Studio 17 2022 generator (multi-config)",
             "generator": "Visual Studio 17 2022",
             "inherits": [ "default" ],
+            "binaryDir": "${workspaceFolder}/build/vs2022",
             "architecture":{
                 "value": "x64",
                 "strategy": "set"
-            },
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "YES"
             }
         }
     ],
     "buildPresets": [
         {
-            "name": "core-build",
+            "name": "defaultPreset",
             "description": "Inherits environment from base configurePreset",
-            "configurePreset": "default",
-            "hidden": true
+            "configurePreset": "default"
         },
         {
             "name": "clean-build",
-            "description": "",
-            "configurePreset": "x64-windows",
-            "inherits": "core-build",
+            "description": "Cleans build before default build",
+            "configurePreset": "default",
+            "inherits": "defaultPreset",
             "cleanFirst": true
+        },
+        {
+          "name": "vs2022-debug",
+          "configurePreset": "vs2022",
+          "configuration": "Debug"
+        },
+        {
+          "name": "vs2022-release",
+          "configurePreset": "vs2022",
+          "configuration": "Release"
         }
     ]
 }
