@@ -7,7 +7,7 @@ void Game::Update(float dt) {
 
 void Game::Render() {
     SDL_Renderer* renderer = Engine::GetRenderer();
-    SDL_SetRenderDrawColor(renderer, 255, 100, 100, 255);
+    SDL_SetRenderDrawColor(renderer, 100, 255, 100, 255);
     SDL_FRect rect = { 100, 100, 200, 150 };
     SDL_RenderFillRect(renderer, &rect);
 }
