@@ -10,4 +10,5 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Add vendor and source directories
 add_subdirectory(vendor)
-add_subdirectory(src)
+add_subdirectory(Engine)
+add_subdirectory(Game)

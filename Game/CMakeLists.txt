@@ -4,15 +4,14 @@ enable_testing()
 # Define game engine sources
 set(SOURCES 
     main.cpp
-    Engine.cpp
     Game.cpp
 )
 
 set(HEADERS 
-    Engine.h 
     Game.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE vendor)
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(${PROJECT_NAME} PRIVATE Engine)

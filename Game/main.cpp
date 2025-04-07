@@ -2,7 +2,7 @@
 #include "Game.h"
 
 int main(int argc, char* argv[]) {
-    if (!Engine::Init("SandCastle Engine", 1280, 720)) return -1;
+    if (!Engine::Init("SandCastle Engine", 1980, 1080)) return -1;
 
     Game game;
 
