@@ -1,12 +1,18 @@
 #pragma once
-#include <SDL3/SDL.h>
+#include "Renderer.h"
 
-namespace Engine {
-    bool Init(const char* title, int width, int height);
+class Engine {
+public:
+    bool Init();
     void Shutdown();
     bool IsRunning();
-    void PollEvents();
-    void Present();
     float GetDeltaTime();
-    SDL_Renderer* GetRenderer();
-}
+
+    void Run();
+private:
+    void PollEvents();
+    void Draw();
+
+private:
+    Renderer mRenderer;
+};

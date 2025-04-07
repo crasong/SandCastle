@@ -1,7 +1,12 @@
 #pragma once
+#include "Engine.h"
+#include <memory>
 
 class Game {
 public:
+    void Run();
+
     void Update(float dt);
-    void Render();
+private:
+    std::unique_ptr<Engine> engine;
 };

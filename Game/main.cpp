@@ -2,17 +2,7 @@
 #include "Game.h"
 
 int main(int argc, char* argv[]) {
-    if (!Engine::Init("SandCastle Engine", 1980, 1080)) return -1;
-
     Game game;
-
-    while (Engine::IsRunning()) {
-        Engine::PollEvents();
-        game.Update(Engine::GetDeltaTime());
-        game.Render();
-        Engine::Present();
-    }
-
-    Engine::Shutdown();
+    game.Run();
     return 0;
 }
