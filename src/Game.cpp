@@ -1,5 +1,8 @@
 #include "Game.h"
 #include "Engine.h"
+#include "imgui.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_vulkan.h"
 
 void Game::Update(float dt) {
     // Game logic here
