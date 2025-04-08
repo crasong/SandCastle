@@ -1,23 +1,28 @@
 #include "Game.h"
+
 #include "Engine.h"
-#include "imgui.h"
-#include "imgui_impl_sdl3.h"
-#include "imgui_impl_vulkan.h"
+#include "Player.h"
 
 void Game::Run() {
-    engine = std::make_unique<Engine>();
-    if (engine->Init()) {
-        // Main loop
-        while (engine->IsRunning()) {
-            engine->Run();
+    mEngine = std::make_unique<Engine>();
+    if (mEngine->Init()) {
+        // Init game components here
+        mScene = std::make_unique<Scene>();
+        mScene->AddObject(std::make_unique<Player>());
 
-            float dt = engine->GetDeltaTime();
+        // Main loop
+        while (mEngine->IsRunning()) {
+            mEngine->Run();
+
+            float dt = mEngine->GetDeltaTime();
             Update(dt);
         }
     }
-    engine->Shutdown();
+    mEngine->Shutdown();
 }
 
 void Game::Update(float dt) {
     // Game logic here
+    mScene->Update();
+    mScene->Render();
 }

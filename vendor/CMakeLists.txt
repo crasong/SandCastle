@@ -1,3 +1,4 @@
+# Add SDL
 # Important: build SDL3 as a static lib
 set(SDL3_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
 set(SDL3_FORCE_STATIC ON CACHE BOOL "" FORCE)
@@ -5,14 +6,22 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(SDL_TEST OFF CACHE BOOL "" FORCE)
 add_subdirectory(SDL)
 
+# Add GLM
+add_subdirectory(glm)
+
 # Get Vulkan
 find_package(Vulkan REQUIRED)
 
 # Setup vendor interface
 add_library(vendor INTERFACE)
+
+# Link SDL
 target_link_libraries(vendor INTERFACE SDL3::SDL3)
 
-# Add imgui
+# Link GLM
+target_link_libraries(vendor INTERFACE glm::glm)
+
+# Link imgui
 target_sources(vendor INTERFACE
                 ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/imgui.h
                 ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/imgui_internal.h
