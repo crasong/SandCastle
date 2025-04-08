@@ -1,6 +1,6 @@
 #include "Engine.h"
 
-static bool running = true;
+static bool s_Running = true;
 static float deltaTime = 0.0f;
 static uint64_t lastTicks = 0;
 
@@ -24,7 +24,7 @@ void Engine::Shutdown() {
 }
 
 bool Engine::IsRunning() {
-    return running;
+    return s_Running;
 }
 
 float Engine::GetDeltaTime() {
@@ -42,7 +42,13 @@ void Engine::PollEvents() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT) {
-            running = false;
+            s_Running = false;
+        }
+        if (event.type == SDL_EVENT_KEY_DOWN) {
+            SDL_Keycode key = event.key.key;
+            if (key == SDLK_ESCAPE) {
+                s_Running = false;
+            }
         }
     }
 

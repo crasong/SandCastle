@@ -4,3 +4,7 @@
 TransformComponent::TransformComponent(GameObject* owner): BaseComponent(owner) {
     mPosition = glm::vec3(50);
 }
+
+void TransformComponent::Init() {
+
+}

@@ -10,16 +10,18 @@ add_subdirectory(SDL)
 add_subdirectory(glm)
 
 # Get Vulkan
-find_package(Vulkan REQUIRED)
+add_subdirectory(Vulkan-Headers)
+add_subdirectory(volk)
 
 # Setup vendor interface
 add_library(vendor INTERFACE)
 
-# Link SDL
-target_link_libraries(vendor INTERFACE SDL3::SDL3)
-
-# Link GLM
-target_link_libraries(vendor INTERFACE glm::glm)
+# Link Libraries
+target_link_libraries(vendor INTERFACE 
+        SDL3::SDL3
+        glm::glm
+        Vulkan::Headers
+        volk)
 
 # Link imgui
 target_sources(vendor INTERFACE
@@ -34,4 +36,11 @@ target_include_directories(vendor INTERFACE
                             ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/
                             ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends)
 
-target_link_libraries(vendor INTERFACE Vulkan::Vulkan)
+target_compile_definitions(vendor INTERFACE 
+        VK_NO_PROTOTYPES
+        VOLK_IMPLEMENTATION
+        VULKAN_HPP_NO_CONSTRUCTORS=1
+        VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+        #VULKAN_HPP_STORAGE_SHARED 
+        #VULKAN_HPP_STORAGE_SHARED_EXPORT
+        )
