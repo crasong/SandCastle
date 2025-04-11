@@ -34,7 +34,7 @@ float Engine::GetDeltaTime() {
 void Engine::Run() {
     PollEvents();
 
-    mRenderer.Clear();
+    //mRenderer.Clear();
     Draw();
 }
 
@@ -49,6 +49,9 @@ void Engine::PollEvents() {
             if (key == SDLK_ESCAPE) {
                 s_Running = false;
             }
+            if (key == SDLK_LEFT) {
+                mRenderer.CycleRenderMode();
+            }
         }
     }
 
@@ -59,14 +62,6 @@ void Engine::PollEvents() {
 }
 
 void Engine::Draw() {
-    SDL_Renderer* renderer = mRenderer.GetRenderer();
-    SDL_SetRenderDrawColor(renderer, 100, 255, 100, 255);
-    SDL_FRect rect = { 100, 100, 200, 150 };
-    SDL_RenderFillRect(renderer, &rect);
-    SDL_SetRenderDrawColor(renderer, 63, 127, 255, 255);
-    SDL_FRect rect2 = { 880, 540, 300, 300 };
-    SDL_RenderFillRect(renderer, &rect2);
-    
     mRenderer.Present();
 }
 
