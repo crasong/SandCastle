@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.hpp>
 #endif
 
+#include <glm/glm.hpp>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gpu.h>
 #include <string>
@@ -11,6 +12,18 @@
 #include <unordered_map>
 
 class Renderer {
+public:
+    enum RenderMode : Uint8 {
+        Fill = 0,
+        Line,
+        count
+    };
+
+    struct PositionColorVertex {
+        glm::vec3 position;
+        glm::u8vec4 color;
+    };
+
 public:
     Renderer();
     ~Renderer();
@@ -20,11 +33,6 @@ public:
     void Present();
     void Shutdown();
 
-    enum RenderMode : Uint8 {
-        Fill = 0,
-        Line,
-        count
-    };
 
     void CycleRenderMode();
 
@@ -48,7 +56,9 @@ private:
 
 private:
     SDL_Window* mWindow = nullptr;
-    SDL_GPUDevice* mSDLDevice;
+    SDL_GPUDevice* mSDLDevice = nullptr;
+    SDL_GPUBuffer* mVertexBuffer = nullptr;
+    Uint32 mNumVertices = 0;
 
     std::unordered_map<RenderMode, SDL_GPUGraphicsPipeline*> mPipelines;
 

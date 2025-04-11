@@ -7,6 +7,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;
 
 #include <fstream>
 #include <SDL3/SDL_vulkan.h>
+#include <span>
 
 static std::string BasePath;
 
@@ -54,7 +55,8 @@ void Renderer::InitAssetLoader() {
 }
 
 bool Renderer::InitPipelines() {
-    SDL_GPUShader* vertexShader = LoadShader(mSDLDevice, "RawTriangle.vert", 0, 0, 0, 0);
+    
+    SDL_GPUShader* vertexShader = LoadShader(mSDLDevice, "PositionColor.vert", 0, 0, 0, 0);
     if (!vertexShader) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Vertex Shader failed to load");
         return false;
@@ -69,17 +71,29 @@ bool Renderer::InitPipelines() {
     SDL_GPUColorTargetDescription colorTargetDescription{};
     colorTargetDescription.format = SDL_GetGPUSwapchainTextureFormat(mSDLDevice, mWindow);
     std::vector colorTargetDescriptions{colorTargetDescription};
-
     SDL_GPUGraphicsPipelineTargetInfo pipelineTargetInfo{};
     pipelineTargetInfo.color_target_descriptions = colorTargetDescriptions.data();
     pipelineTargetInfo.num_color_targets = colorTargetDescriptions.size();
 
+    SDL_GPUVertexBufferDescription vertexBufferDescription{};
+    vertexBufferDescription.slot = 0;
+    vertexBufferDescription.pitch = sizeof(PositionColorVertex);
+    vertexBufferDescription.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+    vertexBufferDescription.instance_step_rate = 0;
+    std::vector<SDL_GPUVertexBufferDescription> vertexBufferDescriptions{vertexBufferDescription};
+
+    SDL_GPUVertexAttribute vertexPositionAttribute{ 0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0};
+    SDL_GPUVertexAttribute vertexColorAttribute{ 1, 0, SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM, sizeof(glm::vec3)};
+    std::vector<SDL_GPUVertexAttribute> vertexAttributes{vertexPositionAttribute, vertexColorAttribute};
+    SDL_GPUVertexInputState vertexInputState{ vertexBufferDescriptions.data(), 1, vertexAttributes.data(), 2};
+
     SDL_GPUGraphicsPipelineCreateInfo pipelineCreateInfo{};
+    pipelineCreateInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
     pipelineCreateInfo.vertex_shader = vertexShader;
     pipelineCreateInfo.fragment_shader = fragmentShader;
-    pipelineCreateInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
     pipelineCreateInfo.target_info = pipelineTargetInfo;
-    
+    pipelineCreateInfo.vertex_input_state = vertexInputState;
+
     pipelineCreateInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
     mPipelines[RenderMode::Fill] = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &pipelineCreateInfo);
     if (!mPipelines[RenderMode::Fill]) {
@@ -96,6 +110,60 @@ bool Renderer::InitPipelines() {
 
     SDL_ReleaseGPUShader(mSDLDevice, vertexShader);
     SDL_ReleaseGPUShader(mSDLDevice, fragmentShader);
+
+    std::vector<PositionColorVertex> mesh {
+        // triangle 0
+        { {-0.5f, -0.5f, 0}, {255,   0,   0, 255}},
+        { { 0.5f,  0.5f, 0}, {  0, 255,   0, 255}},
+        { {-0.5f,  0.5f, 0}, {  0,   0, 255, 255}},
+        // triangle 1
+        { {-0.5f, -0.5f, 0}, {255,   0,   0, 255}},
+        { { 0.5f, -0.5f, 0}, {  0,   0, 255, 255}},
+        { { 0.5f,  0.5f, 0}, {  0, 255,   0, 255}}
+    };
+    mNumVertices = mesh.size();
+
+    // Create the Vertex Buffer
+    SDL_GPUBufferCreateInfo bufferCreateInfo{};
+    bufferCreateInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+    bufferCreateInfo.size = mNumVertices * sizeof(PositionColorVertex);
+
+    mVertexBuffer = SDL_CreateGPUBuffer(mSDLDevice, &bufferCreateInfo);
+
+    SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo{};
+    transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    transferBufferCreateInfo.size = bufferCreateInfo.size;
+
+    SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &transferBufferCreateInfo);
+    if (!transferBuffer) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create GPU transfer buffer");
+        return false;
+    }
+
+    PositionColorVertex* transferData = static_cast<PositionColorVertex*>(SDL_MapGPUTransferBuffer(mSDLDevice, transferBuffer, false));
+    if (!transferData) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to map GPU transfer buffer");
+        return false;
+    }
+    else {
+        std::span transferBufferData{ transferData, mesh.size()};
+        std::ranges::copy(mesh, transferBufferData.begin());
+    }
+
+    SDL_UnmapGPUTransferBuffer(mSDLDevice, transferBuffer);
+
+    // Upload the transfer data to the vertex buffer
+    SDL_GPUCommandBuffer* uploadCmdBuff = SDL_AcquireGPUCommandBuffer(mSDLDevice);
+    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuff);
+
+    SDL_GPUTransferBufferLocation transferBufferLocation{ transferBuffer, 0 };
+    SDL_GPUBufferRegion bufferRegion{ mVertexBuffer, 0, bufferCreateInfo.size };
+    
+    SDL_UploadToGPUBuffer(copyPass, &transferBufferLocation, &bufferRegion, false);
+
+    SDL_EndGPUCopyPass(copyPass);
+    SDL_SubmitGPUCommandBuffer(uploadCmdBuff);
+    SDL_ReleaseGPUTransferBuffer(mSDLDevice, transferBuffer);
 
     return true;
 }
@@ -198,7 +266,9 @@ bool Renderer::GPURenderPass(SDL_Window* window) {
         };
 
         SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);
-        SDL_DrawGPUPrimitives(renderPass, 3, 1, 0, 0);
+        std::vector<SDL_GPUBufferBinding> bindings{{mVertexBuffer, 0}};
+        SDL_BindGPUVertexBuffers(renderPass, 0, bindings.data(), bindings.size());
+        SDL_DrawGPUPrimitives(renderPass, mNumVertices, 1, 0, 0);
         SDL_EndGPURenderPass(renderPass);
     }
 
