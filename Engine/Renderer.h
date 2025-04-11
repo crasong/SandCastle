@@ -1,8 +1,14 @@
 #pragma once
 
+#ifdef VULKAN_IMPLEMENTATION
+#include <vulkan/vulkan.hpp>
+#endif
+
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gpu.h>
-#include <vulkan/vulkan.hpp>
+#include <string>
+#include <vector>
+#include <unordered_map>
 
 class Renderer {
 public:
@@ -24,6 +30,7 @@ public:
 
 private:
     void InitAssetLoader();
+    bool InitPipelines();
 
     SDL_GPUShader* LoadShader(
         SDL_GPUDevice* device,
@@ -43,8 +50,7 @@ private:
     SDL_Window* mWindow = nullptr;
     SDL_GPUDevice* mSDLDevice;
 
-    SDL_GPUGraphicsPipeline* mFillPipeline;
-    SDL_GPUGraphicsPipeline* mLinePipeline;
+    std::unordered_map<RenderMode, SDL_GPUGraphicsPipeline*> mPipelines;
 
     RenderMode mRenderMode = RenderMode::Fill;
 

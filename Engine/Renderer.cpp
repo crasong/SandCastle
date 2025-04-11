@@ -1,9 +1,12 @@
 #include "Renderer.h"
 
+#ifdef VULKAN_IMPLEMENTATION
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;
+#include <Volk/volk.h>
+#endif
+
 #include <fstream>
 #include <SDL3/SDL_vulkan.h>
-#include <Volk/volk.h>
 
 static std::string BasePath;
 
@@ -36,6 +39,21 @@ bool Renderer::Init(const char* title, int width, int height) {
         return false;
     }
 
+    if (!InitPipelines()) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to initialize GPU Pipelines");
+        return false;
+    }
+
+    SDL_ShowWindow(mWindow);
+
+    return true;
+}
+
+void Renderer::InitAssetLoader() {
+    BasePath = SDL_GetBasePath();
+}
+
+bool Renderer::InitPipelines() {
     SDL_GPUShader* vertexShader = LoadShader(mSDLDevice, "RawTriangle.vert", 0, 0, 0, 0);
     if (!vertexShader) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Vertex Shader failed to load");
@@ -63,15 +81,15 @@ bool Renderer::Init(const char* title, int width, int height) {
     pipelineCreateInfo.target_info = pipelineTargetInfo;
     
     pipelineCreateInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
-    mFillPipeline = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &pipelineCreateInfo);
-    if (!mFillPipeline) {
+    mPipelines[RenderMode::Fill] = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &pipelineCreateInfo);
+    if (!mPipelines[RenderMode::Fill]) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Fill' graphics pipeline");
         return false;
     }
     
 	pipelineCreateInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_LINE;
-    mLinePipeline = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &pipelineCreateInfo);
-    if (!mLinePipeline) {
+    mPipelines[RenderMode::Line] = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &pipelineCreateInfo);
+    if (!mPipelines[RenderMode::Line]) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Line' graphics pipeline");
         return false;
     }
@@ -79,13 +97,7 @@ bool Renderer::Init(const char* title, int width, int height) {
     SDL_ReleaseGPUShader(mSDLDevice, vertexShader);
     SDL_ReleaseGPUShader(mSDLDevice, fragmentShader);
 
-    SDL_ShowWindow(mWindow);
-
     return true;
-}
-
-void Renderer::InitAssetLoader() {
-    BasePath = SDL_GetBasePath();
 }
 
 SDL_GPUShader* Renderer::LoadShader(
@@ -185,7 +197,7 @@ bool Renderer::GPURenderPass(SDL_Window* window) {
             SDL_BeginGPURenderPass(commandBuffer, colorTargets.data(), colorTargets.size(), nullptr)
         };
 
-        SDL_BindGPUGraphicsPipeline(renderPass, (mRenderMode == RenderMode::Fill) ? mFillPipeline : mLinePipeline);
+        SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);
         SDL_DrawGPUPrimitives(renderPass, 3, 1, 0, 0);
         SDL_EndGPURenderPass(renderPass);
     }
@@ -205,8 +217,9 @@ void Renderer::Present() {
 }
 
 void Renderer::Shutdown() {
-    SDL_ReleaseGPUGraphicsPipeline(mSDLDevice, mFillPipeline);
-    SDL_ReleaseGPUGraphicsPipeline(mSDLDevice, mLinePipeline);
+    for (auto modePipeline : mPipelines) {
+        SDL_ReleaseGPUGraphicsPipeline(mSDLDevice, modePipeline.second);
+    }
 
     if (mWindow) SDL_DestroyWindow(mWindow);
 }
