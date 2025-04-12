@@ -55,6 +55,20 @@ void Renderer::InitAssetLoader() {
 }
 
 bool Renderer::InitPipelines() {
+    mMesh = {
+        {   // vertices
+            { {-0.5f, -0.5f, 0}, {255,   0,   0, 255}}, // SW 0
+            { { 0.5f,  0.5f, 0}, {  0, 255,   0, 255}}, // NE 1
+            { {-0.5f,  0.5f, 0}, {  0,   0, 255, 255}}, // NW 2
+            
+            //{ {-0.5f, -0.5f, 0}, {255,   0,   0, 255}}, // SW 0 copy
+            { { 0.5f, -0.5f, 0}, {  0,   0, 255, 255}}, // SE 3
+            //{ { 0.5f,  0.5f, 0}, {  0, 255,   0, 255}}, // NE 1 copy
+        },
+        // indices
+        //{0, 1, 2, 3, 4, 5}
+        {0, 1, 2, 0, 3, 1}
+    };
     
     SDL_GPUShader* vertexShader = LoadShader(mSDLDevice, "PositionColor.vert", 0, 0, 0, 0);
     if (!vertexShader) {
@@ -111,59 +125,72 @@ bool Renderer::InitPipelines() {
     SDL_ReleaseGPUShader(mSDLDevice, vertexShader);
     SDL_ReleaseGPUShader(mSDLDevice, fragmentShader);
 
-    std::vector<PositionColorVertex> mesh {
-        // triangle 0
-        { {-0.5f, -0.5f, 0}, {255,   0,   0, 255}},
-        { { 0.5f,  0.5f, 0}, {  0, 255,   0, 255}},
-        { {-0.5f,  0.5f, 0}, {  0,   0, 255, 255}},
-        // triangle 1
-        { {-0.5f, -0.5f, 0}, {255,   0,   0, 255}},
-        { { 0.5f, -0.5f, 0}, {  0,   0, 255, 255}},
-        { { 0.5f,  0.5f, 0}, {  0, 255,   0, 255}}
-    };
-    mNumVertices = mesh.size();
-
     // Create the Vertex Buffer
-    SDL_GPUBufferCreateInfo bufferCreateInfo{};
-    bufferCreateInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
-    bufferCreateInfo.size = mNumVertices * sizeof(PositionColorVertex);
+    SDL_GPUBufferCreateInfo vertexBufferCreateInfo{};
+    vertexBufferCreateInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+    vertexBufferCreateInfo.size = mMesh.vertices.size() * sizeof(PositionColorVertex);
+    mVertexBuffer = SDL_CreateGPUBuffer(mSDLDevice, &vertexBufferCreateInfo);
 
-    mVertexBuffer = SDL_CreateGPUBuffer(mSDLDevice, &bufferCreateInfo);
+    SDL_GPUBufferCreateInfo indexBufferCreateInfo{};
+    indexBufferCreateInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
+    indexBufferCreateInfo.size = mMesh.indices.size() * sizeof(Uint32);
+    mIndexBuffer =  SDL_CreateGPUBuffer(mSDLDevice, &indexBufferCreateInfo);
 
-    SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo{};
-    transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    transferBufferCreateInfo.size = bufferCreateInfo.size;
+    SDL_GPUTransferBufferCreateInfo vertexTransferBufferCreateInfo{};
+    vertexTransferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    vertexTransferBufferCreateInfo.size = vertexBufferCreateInfo.size;
+    
+    SDL_GPUTransferBufferCreateInfo indexTransferBufferCreateInfo{};
+    indexTransferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    indexTransferBufferCreateInfo.size = indexBufferCreateInfo.size;
 
-    SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &transferBufferCreateInfo);
-    if (!transferBuffer) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create GPU transfer buffer");
+    SDL_GPUTransferBuffer* vertexTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &vertexTransferBufferCreateInfo);
+    if (!vertexTransferBuffer) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create GPU vertex transfer buffer");
+        return false;
+    }
+    
+    SDL_GPUTransferBuffer* indexTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &indexTransferBufferCreateInfo);
+    if (!indexTransferBuffer) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create GPU index transfer buffer");
         return false;
     }
 
-    PositionColorVertex* transferData = static_cast<PositionColorVertex*>(SDL_MapGPUTransferBuffer(mSDLDevice, transferBuffer, false));
-    if (!transferData) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to map GPU transfer buffer");
+    void* vertexBufferDataPtr = SDL_MapGPUTransferBuffer(mSDLDevice, vertexTransferBuffer, false);
+    void* indexBufferDataPtr = SDL_MapGPUTransferBuffer(mSDLDevice, indexTransferBuffer, false);
+    if (!vertexBufferDataPtr || !indexBufferDataPtr) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to map GPU transfer buffer data pointers");
         return false;
     }
     else {
-        std::span transferBufferData{ transferData, mesh.size()};
-        std::ranges::copy(mesh, transferBufferData.begin());
+        std::span transferBufferData{ static_cast<PositionColorVertex*>(vertexBufferDataPtr), mMesh.vertices.size()};
+        std::ranges::copy(mMesh.vertices, transferBufferData.begin());
+
+        std::span indexBufferData{ static_cast<Uint32*>(indexBufferDataPtr), mMesh.indices.size()};
+        std::ranges::copy(mMesh.indices, indexBufferData.begin());
     }
 
-    SDL_UnmapGPUTransferBuffer(mSDLDevice, transferBuffer);
+    SDL_UnmapGPUTransferBuffer(mSDLDevice, vertexTransferBuffer);
+    SDL_UnmapGPUTransferBuffer(mSDLDevice, indexTransferBuffer);
 
     // Upload the transfer data to the vertex buffer
     SDL_GPUCommandBuffer* uploadCmdBuff = SDL_AcquireGPUCommandBuffer(mSDLDevice);
     SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuff);
-
-    SDL_GPUTransferBufferLocation transferBufferLocation{ transferBuffer, 0 };
-    SDL_GPUBufferRegion bufferRegion{ mVertexBuffer, 0, bufferCreateInfo.size };
-    
-    SDL_UploadToGPUBuffer(copyPass, &transferBufferLocation, &bufferRegion, false);
+    {
+        SDL_GPUTransferBufferLocation transferBufferLocation{ vertexTransferBuffer, 0 };
+        SDL_GPUBufferRegion bufferRegion{ mVertexBuffer, 0, vertexBufferCreateInfo.size };
+        SDL_UploadToGPUBuffer(copyPass, &transferBufferLocation, &bufferRegion, false);
+    }
+    {
+        SDL_GPUTransferBufferLocation transferBufferLocation{ indexTransferBuffer, 0 };
+        SDL_GPUBufferRegion bufferRegion{ mIndexBuffer, 0, indexBufferCreateInfo.size };
+        SDL_UploadToGPUBuffer(copyPass, &transferBufferLocation, &bufferRegion, false);
+    }
 
     SDL_EndGPUCopyPass(copyPass);
     SDL_SubmitGPUCommandBuffer(uploadCmdBuff);
-    SDL_ReleaseGPUTransferBuffer(mSDLDevice, transferBuffer);
+    SDL_ReleaseGPUTransferBuffer(mSDLDevice, vertexTransferBuffer);
+    SDL_ReleaseGPUTransferBuffer(mSDLDevice, indexTransferBuffer);
 
     return true;
 }
@@ -268,7 +295,9 @@ bool Renderer::GPURenderPass(SDL_Window* window) {
         SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);
         std::vector<SDL_GPUBufferBinding> bindings{{mVertexBuffer, 0}};
         SDL_BindGPUVertexBuffers(renderPass, 0, bindings.data(), bindings.size());
-        SDL_DrawGPUPrimitives(renderPass, mNumVertices, 1, 0, 0);
+        SDL_GPUBufferBinding indexBufferBinding{mIndexBuffer, 0};
+        SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+        SDL_DrawGPUIndexedPrimitives(renderPass, mMesh.indices.size(), 1, 0, 0, 0);
         SDL_EndGPURenderPass(renderPass);
     }
 

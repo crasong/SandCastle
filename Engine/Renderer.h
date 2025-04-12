@@ -24,6 +24,11 @@ public:
         glm::u8vec4 color;
     };
 
+    struct Mesh {
+        std::vector<PositionColorVertex> vertices;
+        std::vector<Uint32> indices;
+    };
+
 public:
     Renderer();
     ~Renderer();
@@ -58,11 +63,12 @@ private:
     SDL_Window* mWindow = nullptr;
     SDL_GPUDevice* mSDLDevice = nullptr;
     SDL_GPUBuffer* mVertexBuffer = nullptr;
-    Uint32 mNumVertices = 0;
+    SDL_GPUBuffer* mIndexBuffer = nullptr;
 
     std::unordered_map<RenderMode, SDL_GPUGraphicsPipeline*> mPipelines;
 
     RenderMode mRenderMode = RenderMode::Fill;
+    Mesh mMesh;
 
     #ifdef VULKAN_IMPLEMENTATION
     vk::Instance mInstance;
