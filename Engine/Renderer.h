@@ -19,13 +19,13 @@ public:
         count
     };
 
-    struct PositionColorVertex {
-        glm::vec3 position;
-        glm::u8vec4 color;
+    struct PositionTextureVertex {
+        glm::vec3 position = {0, 0, 0};
+        glm::vec2 texCoord = {0, 0};
     };
 
     struct Mesh {
-        std::vector<PositionColorVertex> vertices;
+        std::vector<PositionTextureVertex> vertices;
         std::vector<Uint32> indices;
     };
 
@@ -40,6 +40,7 @@ public:
 
 
     void CycleRenderMode();
+    void CycleSampler();
 
 private:
     void InitAssetLoader();
@@ -52,6 +53,7 @@ private:
         const Uint32 uniformBufferCount,
         const Uint32 storageBufferCount,
         const Uint32 storageTextureCount);
+    SDL_Surface* LoadImage(const std::string& filename, int desiredChannels = 0);
 
     bool GPURenderPass(SDL_Window* window);
     
@@ -64,9 +66,12 @@ private:
     SDL_GPUDevice* mSDLDevice = nullptr;
     SDL_GPUBuffer* mVertexBuffer = nullptr;
     SDL_GPUBuffer* mIndexBuffer = nullptr;
+    SDL_GPUTexture* mTexture = nullptr;
+    std::vector<SDL_GPUSampler*> mSamplers;
 
     std::unordered_map<RenderMode, SDL_GPUGraphicsPipeline*> mPipelines;
 
+    Uint8 mCurrentSamplerIndex = 0;
     RenderMode mRenderMode = RenderMode::Fill;
     Mesh mMesh;
 

@@ -52,6 +52,9 @@ void Engine::PollEvents() {
             if (key == SDLK_LEFT) {
                 mRenderer.CycleRenderMode();
             }
+            if (key == SDLK_RIGHT) {
+                mRenderer.CycleSampler();
+            }
         }
     }
 
