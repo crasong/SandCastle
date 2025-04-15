@@ -55,6 +55,12 @@ void Engine::PollEvents() {
             if (key == SDLK_RIGHT) {
                 mRenderer.CycleSampler();
             }
+            if (key == SDLK_UP) {
+                mRenderer.IncreaseScale();
+            }
+            if (key == SDLK_DOWN) {
+                mRenderer.DecreaseScale();
+            }
         }
     }
 

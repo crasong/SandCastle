@@ -6,6 +6,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;
 #endif
 
 #include <fstream>
+#include <glm/gtc/matrix_transform.hpp>
 #include <SDL3/SDL_vulkan.h>
 #include <span>
 
@@ -66,17 +67,62 @@ void Renderer::InitAssetLoader() {
 
 bool Renderer::InitPipelines() {
     mMesh = {
-        {   // vertices
-            { {-0.5f,  0.5f, 0}, { 0,  0}}, // NW
-            { { 0.5f,  0.5f, 0}, { 4,  0}}, // NE
-            { { 0.5f, -0.5f, 0}, { 4,  4}}, // SE
-            { {-0.5f, -0.5f, 0}, { 0,  4}}, // SW
+        // vertices
+        {
+            // Front face
+            { .position = {-0.5f, -0.5f,  0.5f}, .uv = {0, 4} }, // Bottom-left
+            { .position = { 0.5f, -0.5f,  0.5f}, .uv = {4, 4} }, // Bottom-right
+            { .position = { 0.5f,  0.5f,  0.5f}, .uv = {4, 0} }, // Top-right
+            { .position = {-0.5f,  0.5f,  0.5f}, .uv = {0, 0} }, // Top-left
+
+            // Back face
+            { .position = {-0.5f, -0.5f, -0.5f}, .uv = {4, 4} }, // Bottom-left
+            { .position = { 0.5f, -0.5f, -0.5f}, .uv = {0, 4} }, // Bottom-right
+            { .position = { 0.5f,  0.5f, -0.5f}, .uv = {0, 0} }, // Top-right
+            { .position = {-0.5f,  0.5f, -0.5f}, .uv = {4, 0} }, // Top-left
+
+            // Left face
+            { .position = {-0.5f, -0.5f, -0.5f}, .uv = {0, 4} }, // Bottom-left
+            { .position = {-0.5f, -0.5f,  0.5f}, .uv = {4, 4} }, // Bottom-right
+            { .position = {-0.5f,  0.5f,  0.5f}, .uv = {4, 0} }, // Top-right
+            { .position = {-0.5f,  0.5f, -0.5f}, .uv = {0, 0} }, // Top-left
+
+            // Right face
+            { .position = { 0.5f, -0.5f, -0.5f}, .uv = {4, 4} }, // Bottom-left
+            { .position = { 0.5f, -0.5f,  0.5f}, .uv = {0, 4} }, // Bottom-right
+            { .position = { 0.5f,  0.5f,  0.5f}, .uv = {0, 0} }, // Top-right
+            { .position = { 0.5f,  0.5f, -0.5f}, .uv = {4, 0} }, // Top-left
+
+            // Top face
+            { .position = {-0.5f,  0.5f,  0.5f}, .uv = {0, 4} }, // Bottom-left
+            { .position = { 0.5f,  0.5f,  0.5f}, .uv = {4, 4} }, // Bottom-right
+            { .position = { 0.5f,  0.5f, -0.5f}, .uv = {4, 0} }, // Top-right
+            { .position = {-0.5f,  0.5f, -0.5f}, .uv = {0, 0} }, // Top-left
+
+            // Bottom face
+            { .position = {-0.5f, -0.5f,  0.5f}, .uv = {0, 0} }, // Bottom-left
+            { .position = { 0.5f, -0.5f,  0.5f}, .uv = {4, 0} }, // Bottom-right
+            { .position = { 0.5f, -0.5f, -0.5f}, .uv = {4, 4} }, // Top-right
+            { .position = {-0.5f, -0.5f, -0.5f}, .uv = {0, 4} }, // Top-left
         },
         // indices
-        {0, 1, 2, 0, 2, 3}
+        {
+            // Front face
+            0, 1, 2, 0, 2, 3,
+            // Back face
+            4, 6, 5, 4, 7, 6,
+            // Left face
+            8, 9, 10, 8, 10, 11,
+            // Right face
+            12, 13, 14, 12, 14, 15,
+            // Top face
+            16, 17, 18, 16, 18, 19,
+            // Bottom face
+            20, 21, 22, 20, 22, 23
+        }
     };
     
-    SDL_GPUShader* vertexShader = LoadShader(mSDLDevice, "TexturedQuad.vert", 0, 0, 0, 0);
+    SDL_GPUShader* vertexShader = LoadShader(mSDLDevice, "TexturedQuadWithMatrix.vert", 0, 1, 0, 0);
     if (!vertexShader) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Vertex Shader failed to load");
         return false;
@@ -101,6 +147,31 @@ bool Renderer::InitPipelines() {
     SDL_GPUGraphicsPipelineTargetInfo pipelineTargetInfo{};
     pipelineTargetInfo.color_target_descriptions = colorTargetDescriptions.data();
     pipelineTargetInfo.num_color_targets = static_cast<Uint32>(colorTargetDescriptions.size());
+    pipelineTargetInfo.has_depth_stencil_target = true;
+
+    if (SDL_GPUTextureSupportsFormat(
+        mSDLDevice, 
+        SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT, 
+        SDL_GPU_TEXTURETYPE_2D, 
+        SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+        pipelineTargetInfo.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
+    }
+    else if (SDL_GPUTextureSupportsFormat(
+        mSDLDevice, 
+        SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT, 
+        SDL_GPU_TEXTURETYPE_2D, 
+        SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+        pipelineTargetInfo.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT;
+    }
+    else {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "No depth-stencil format supported");
+        return false;
+    }
+    SDL_GPUDepthStencilState depthStencilState{
+        .compare_op = SDL_GPU_COMPAREOP_LESS,
+        .enable_depth_test = true,
+        .enable_depth_write = true,
+    };
 
     SDL_GPUVertexBufferDescription vertexBufferDescription{};
     vertexBufferDescription.slot = 0;
@@ -120,6 +191,7 @@ bool Renderer::InitPipelines() {
     pipelineCreateInfo.fragment_shader = fragmentShader;
     pipelineCreateInfo.target_info = pipelineTargetInfo;
     pipelineCreateInfo.vertex_input_state = vertexInputState;
+    pipelineCreateInfo.depth_stencil_state = depthStencilState;
 
     pipelineCreateInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
     mPipelines[RenderMode::Fill] = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &pipelineCreateInfo);
@@ -225,7 +297,7 @@ bool Renderer::InitPipelines() {
     }
     SDL_SetGPUBufferName(mSDLDevice, mIndexBuffer, "Index Buffer");
 
-    SDL_GPUTextureCreateInfo textureCreateInfo{
+    SDL_GPUTextureCreateInfo colorTextureCreateInfo{
 		.type = SDL_GPU_TEXTURETYPE_2D,
 		.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
 		.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
@@ -234,12 +306,35 @@ bool Renderer::InitPipelines() {
 		.layer_count_or_depth = 1,
 		.num_levels = 1,
     };
-    mTexture = SDL_CreateGPUTexture(mSDLDevice, &textureCreateInfo);
-    if (!mTexture) {
+    mColorTexture = SDL_CreateGPUTexture(mSDLDevice, &colorTextureCreateInfo);
+    if (!mColorTexture) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create texture: %s", SDL_GetError());
         return false;
     }
-    SDL_SetGPUTextureName(mSDLDevice, mTexture, "Ravioli Texture");
+    SDL_SetGPUTextureName(mSDLDevice, mColorTexture, "Ravioli Texture");
+
+    int windowWidth, windowHeight;
+    if (!SDL_GetWindowSize(mWindow, &windowWidth, &windowHeight)) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to get window size: %s", SDL_GetError());
+        return false;
+    }
+
+    SDL_GPUTextureCreateInfo depthTextureCreateInfo{
+        .type = SDL_GPU_TEXTURETYPE_2D,
+        .format = pipelineTargetInfo.depth_stencil_format,
+        .usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+        .width = static_cast<Uint32>(windowWidth),
+        .height = static_cast<Uint32>(windowHeight),
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+        .sample_count = SDL_GPU_SAMPLECOUNT_1,
+    };
+    mDepthTexture = SDL_CreateGPUTexture(mSDLDevice, &depthTextureCreateInfo);
+    if (!mDepthTexture) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create depth texture: %s", SDL_GetError());
+        return false;
+    }
+    SDL_SetGPUTextureName(mSDLDevice, mDepthTexture, "Depth Texture");
 
     SDL_GPUTransferBufferCreateInfo vertexTransferBufferCreateInfo{};
     vertexTransferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
@@ -309,7 +404,7 @@ bool Renderer::InitPipelines() {
     }
     {   // upload texture data
         SDL_GPUTextureTransferInfo textureTransferInfo{ .transfer_buffer = textureTransferBuffer, .offset = 0 };
-        SDL_GPUTextureRegion textureRegion{ .texture = mTexture, .w = static_cast<Uint32>(imageData->w), .h = static_cast<Uint32>(imageData->h), .d = 1 };
+        SDL_GPUTextureRegion textureRegion{ .texture = mColorTexture, .w = static_cast<Uint32>(imageData->w), .h = static_cast<Uint32>(imageData->h), .d = 1 };
         SDL_UploadToGPUTexture(copyPass, &textureTransferInfo, &textureRegion, false);
     }
 
@@ -443,9 +538,16 @@ bool Renderer::GPURenderPass(SDL_Window* window) {
         colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
         colorTarget.clear_color = SDL_FColor{0.3f,0.2f,0.2f,1.0f};
         std::vector<SDL_GPUColorTargetInfo> colorTargets {colorTarget};
+
+        SDL_GPUDepthStencilTargetInfo depthStencilTarget{};
+        depthStencilTarget.texture = mDepthTexture;
+        depthStencilTarget.clear_depth = 1.0f;
+        depthStencilTarget.load_op = SDL_GPU_LOADOP_CLEAR;
+        depthStencilTarget.store_op = SDL_GPU_STOREOP_STORE;
+        depthStencilTarget.clear_stencil = 0;
         
         SDL_GPURenderPass* renderPass{
-            SDL_BeginGPURenderPass(commandBuffer, colorTargets.data(), static_cast<Uint32>(colorTargets.size()), nullptr)
+            SDL_BeginGPURenderPass(commandBuffer, colorTargets.data(), static_cast<Uint32>(colorTargets.size()), &depthStencilTarget)
         };
 
         SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);
@@ -453,8 +555,27 @@ bool Renderer::GPURenderPass(SDL_Window* window) {
         SDL_BindGPUVertexBuffers(renderPass, 0, bindings.data(), static_cast<Uint32>(bindings.size()));
         SDL_GPUBufferBinding indexBufferBinding{mIndexBuffer, 0};
         SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-        SDL_GPUTextureSamplerBinding textureSamplerBinding{mTexture, mSamplers[mCurrentSamplerIndex]};
+        SDL_GPUTextureSamplerBinding textureSamplerBinding{mColorTexture, mSamplers[mCurrentSamplerIndex]};
         SDL_BindGPUFragmentSamplers(renderPass, 0, &textureSamplerBinding, 1);
+
+        // projection matrix
+        int windowWidth, windowHeight;
+        if (!SDL_GetWindowSize(window, &windowWidth, &windowHeight)) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_GetWindowSize failed: %s", SDL_GetError());
+            return false;
+        }
+        float aspectRatio = static_cast<float>(windowWidth) / static_cast<float>(windowHeight);
+        glm::mat4 projectionMatrix = glm::perspective(glm::radians(90.0f/aspectRatio), aspectRatio, 0.1f, 100.0f);
+        // view matrix
+        glm::mat4 viewMatrix = glm::lookAt(glm::vec3(0, 2, -3), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+        // model matrix
+        glm::mat4 modelMatrix = glm::mat4(1.0f);
+        modelMatrix = glm::scale(modelMatrix, glm::vec3(mScale));
+        modelMatrix = glm::rotate(modelMatrix, SDL_GetTicks() / 1000.0f, glm::vec3(0, 1, 0));
+        // modelviewprojection matrix
+        glm::mat4 mvpMatrix = (projectionMatrix * viewMatrix) * modelMatrix;
+        SDL_PushGPUVertexUniformData(commandBuffer, 0, &mvpMatrix, sizeof(glm::mat4));
+
         SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mMesh.indices.size()), 1, 0, 0, 0);
         SDL_EndGPURenderPass(renderPass);
     }
@@ -482,7 +603,8 @@ void Renderer::Shutdown() {
     }
     if (mVertexBuffer) SDL_ReleaseGPUBuffer(mSDLDevice, mVertexBuffer);
     if (mIndexBuffer) SDL_ReleaseGPUBuffer(mSDLDevice, mIndexBuffer);
-    if (mTexture) SDL_ReleaseGPUTexture(mSDLDevice, mTexture);
+    if (mColorTexture) SDL_ReleaseGPUTexture(mSDLDevice, mColorTexture);
+    if (mDepthTexture) SDL_ReleaseGPUTexture(mSDLDevice, mDepthTexture);
     if (mWindow) SDL_DestroyWindow(mWindow);
 }
 
@@ -498,6 +620,20 @@ void Renderer::CycleSampler() {
     mCurrentSamplerIndex = ++mCurrentSamplerIndex;
     if (mCurrentSamplerIndex > mSamplers.size() - 1) {
         mCurrentSamplerIndex = 0;
+    }
+}
+
+void Renderer::IncreaseScale() {
+    mScale += mScaleStep;
+    if (mScale > 5.0f) {
+        mScale = 5.0f;
+    }
+}
+
+void Renderer::DecreaseScale() {
+    mScale -= mScaleStep;
+    if (mScale < 0.2f) {
+        mScale = 0.2f;
     }
 }
 

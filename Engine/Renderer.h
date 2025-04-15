@@ -21,7 +21,7 @@ public:
 
     struct PositionTextureVertex {
         glm::vec3 position = {0, 0, 0};
-        glm::vec2 texCoord = {0, 0};
+        glm::vec2 uv = {0, 0};
     };
 
     struct Mesh {
@@ -41,6 +41,8 @@ public:
 
     void CycleRenderMode();
     void CycleSampler();
+    void IncreaseScale();
+    void DecreaseScale();
 
 private:
     void InitAssetLoader();
@@ -66,7 +68,8 @@ private:
     SDL_GPUDevice* mSDLDevice = nullptr;
     SDL_GPUBuffer* mVertexBuffer = nullptr;
     SDL_GPUBuffer* mIndexBuffer = nullptr;
-    SDL_GPUTexture* mTexture = nullptr;
+    SDL_GPUTexture* mColorTexture = nullptr;
+    SDL_GPUTexture* mDepthTexture = nullptr;
     std::vector<SDL_GPUSampler*> mSamplers;
 
     std::unordered_map<RenderMode, SDL_GPUGraphicsPipeline*> mPipelines;
@@ -74,6 +77,9 @@ private:
     Uint8 mCurrentSamplerIndex = 0;
     RenderMode mRenderMode = RenderMode::Fill;
     Mesh mMesh;
+
+    float mScale = 1.0f;
+    const float mScaleStep = 0.1f;
 
     #ifdef VULKAN_IMPLEMENTATION
     vk::Instance mInstance;
