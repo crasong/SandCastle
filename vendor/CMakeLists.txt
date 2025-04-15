@@ -13,6 +13,12 @@ add_subdirectory(glm)
 add_subdirectory(Vulkan-Headers)
 add_subdirectory(volk)
 
+# Add Assimp
+set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_INSTALL_PDB ON CACHE BOOL "" FORCE)
+add_subdirectory(assimp)
+
 # Setup vendor interface
 add_library(vendor INTERFACE)
 
@@ -20,6 +26,7 @@ add_library(vendor INTERFACE)
 target_link_libraries(vendor INTERFACE 
         SDL3::SDL3
         glm::glm
+        assimp
         Vulkan::Headers
         volk)
 
