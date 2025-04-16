@@ -41,26 +41,36 @@ void Engine::Run() {
 void Engine::PollEvents() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
-        if (event.type == SDL_EVENT_QUIT) {
-            s_Running = false;
-        }
-        if (event.type == SDL_EVENT_KEY_DOWN) {
-            SDL_Keycode key = event.key.key;
-            if (key == SDLK_ESCAPE) {
+        switch (event.type) {
+            case SDL_EVENT_QUIT:
                 s_Running = false;
-            }
-            if (key == SDLK_LEFT) {
-                mRenderer.CycleRenderMode();
-            }
-            if (key == SDLK_RIGHT) {
-                mRenderer.CycleSampler();
-            }
-            if (key == SDLK_UP) {
-                mRenderer.IncreaseScale();
-            }
-            if (key == SDLK_DOWN) {
-                mRenderer.DecreaseScale();
-            }
+                break;
+            case SDL_EVENT_KEY_DOWN:
+                {
+                    SDL_Keycode key = event.key.key;
+                    if (key == SDLK_ESCAPE) {
+                        s_Running = false;
+                    }
+                    if (key == SDLK_LEFT) {
+                        mRenderer.CycleRenderMode();
+                    }
+                    if (key == SDLK_RIGHT) {
+                        mRenderer.CycleSampler();
+                    }
+                    if (key == SDLK_UP) {
+                        mRenderer.IncreaseScale();
+                    }
+                    if (key == SDLK_DOWN) {
+                        mRenderer.DecreaseScale();
+                    }
+                }
+                break;
+            case SDL_EVENT_WINDOW_RESIZED:
+            case SDL_EVENT_WINDOW_EXPOSED:
+            case SDL_EVENT_WINDOW_MINIMIZED:
+            case SDL_EVENT_WINDOW_MAXIMIZED:
+                mRenderer.Resize();
+                break;
         }
     }
 

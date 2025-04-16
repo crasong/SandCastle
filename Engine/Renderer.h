@@ -38,7 +38,7 @@ public:
     void Present();
     void Shutdown();
 
-
+    void Resize();
     void CycleRenderMode();
     void CycleSampler();
     void IncreaseScale();
@@ -80,6 +80,8 @@ private:
 
     float mScale = 1.0f;
     const float mScaleStep = 0.1f;
+
+    float mCachedScreenAspectRatio = 1.0f;
 
     #ifdef VULKAN_IMPLEMENTATION
     vk::Instance mInstance;

@@ -313,29 +313,8 @@ bool Renderer::InitPipelines() {
     }
     SDL_SetGPUTextureName(mSDLDevice, mColorTexture, "Ravioli Texture");
 
-    int windowWidth, windowHeight;
-    if (!SDL_GetWindowSize(mWindow, &windowWidth, &windowHeight)) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to get window size: %s", SDL_GetError());
-        return false;
-    }
-
-    SDL_GPUTextureCreateInfo depthTextureCreateInfo{
-        .type = SDL_GPU_TEXTURETYPE_2D,
-        .format = pipelineTargetInfo.depth_stencil_format,
-        .usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-        .width = static_cast<Uint32>(windowWidth),
-        .height = static_cast<Uint32>(windowHeight),
-        .layer_count_or_depth = 1,
-        .num_levels = 1,
-        .sample_count = SDL_GPU_SAMPLECOUNT_1,
-    };
-    mDepthTexture = SDL_CreateGPUTexture(mSDLDevice, &depthTextureCreateInfo);
-    if (!mDepthTexture) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create depth texture: %s", SDL_GetError());
-        return false;
-    }
-    SDL_SetGPUTextureName(mSDLDevice, mDepthTexture, "Depth Texture");
-
+    Resize(); // Setup the Depth Texture
+    
     SDL_GPUTransferBufferCreateInfo vertexTransferBufferCreateInfo{};
     vertexTransferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
     vertexTransferBufferCreateInfo.size = vertexBufferCreateInfo.size;
@@ -559,13 +538,8 @@ bool Renderer::GPURenderPass(SDL_Window* window) {
         SDL_BindGPUFragmentSamplers(renderPass, 0, &textureSamplerBinding, 1);
 
         // projection matrix
-        int windowWidth, windowHeight;
-        if (!SDL_GetWindowSize(window, &windowWidth, &windowHeight)) {
-            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_GetWindowSize failed: %s", SDL_GetError());
-            return false;
-        }
-        float aspectRatio = static_cast<float>(windowWidth) / static_cast<float>(windowHeight);
-        glm::mat4 projectionMatrix = glm::perspective(glm::radians(90.0f/aspectRatio), aspectRatio, 0.1f, 100.0f);
+        const float fovY = glm::radians(90.0f/mCachedScreenAspectRatio);
+        glm::mat4 projectionMatrix = glm::perspective(fovY, mCachedScreenAspectRatio, 0.1f, 100.0f);
         // view matrix
         glm::mat4 viewMatrix = glm::lookAt(glm::vec3(0, 2, -3), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
         // model matrix
@@ -606,6 +580,29 @@ void Renderer::Shutdown() {
     if (mColorTexture) SDL_ReleaseGPUTexture(mSDLDevice, mColorTexture);
     if (mDepthTexture) SDL_ReleaseGPUTexture(mSDLDevice, mDepthTexture);
     if (mWindow) SDL_DestroyWindow(mWindow);
+}
+
+void Renderer::Resize() {
+    if (mDepthTexture) SDL_ReleaseGPUTexture(mSDLDevice, mDepthTexture);
+    int windowWidth, windowHeight;
+    if (!SDL_GetWindowSize(mWindow, &windowWidth, &windowHeight)) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_GetWindowSize failed: %s", SDL_GetError());
+        return;
+    }
+    SDL_GPUTextureCreateInfo depthTextureCreateInfo{
+        .type = SDL_GPU_TEXTURETYPE_2D,
+        .format = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
+        .usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+        .width = static_cast<Uint32>(windowWidth),
+        .height = static_cast<Uint32>(windowHeight),
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+        .sample_count = SDL_GPU_SAMPLECOUNT_1,
+    };
+    mDepthTexture = SDL_CreateGPUTexture(mSDLDevice, &depthTextureCreateInfo);
+    SDL_SetGPUTextureName(mSDLDevice, mDepthTexture, "Depth Texture");
+
+    mCachedScreenAspectRatio = static_cast<float>(windowWidth) / static_cast<float>(windowHeight);
 }
 
 void Renderer::CycleRenderMode() {
