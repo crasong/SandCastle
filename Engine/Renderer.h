@@ -9,6 +9,7 @@
 #include <SDL3/SDL_gpu.h>
 #include <string>
 #include <vector>
+#include <UIManager.h>
 #include <unordered_map>
 
 class Renderer {
@@ -95,21 +96,20 @@ private:
     #endif
 
 private:
+    UIManager mUIManager;
+    
     SDL_Window* mWindow = nullptr;
     SDL_GPUDevice* mSDLDevice = nullptr;
     SDL_GPUTexture* mDepthTexture = nullptr;
+    
     std::vector<SDL_GPUSampler*> mSamplers;
-
     std::unordered_map<RenderMode, SDL_GPUGraphicsPipeline*> mPipelines;
+    std::unordered_map<std::string, Mesh> mMeshes;
 
     Uint8 mCurrentSamplerIndex = 0;
     RenderMode mRenderMode = RenderMode::Fill;
-
-    std::unordered_map<std::string, Mesh> mMeshes;
-
     float mScale = 1.0f;
     const float mScaleStep = 0.1f;
-
     float mCachedScreenAspectRatio = 1.0f;
 
     #ifdef VULKAN_IMPLEMENTATION

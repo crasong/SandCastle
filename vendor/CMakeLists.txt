@@ -36,13 +36,18 @@ target_link_libraries(vendor INTERFACE
 
 # Link imgui
 target_sources(vendor INTERFACE
+                ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/imconfig.h
                 ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/imgui.h
                 ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/imgui_internal.h
                 ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/imgui.cpp
                 ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/imgui_demo.cpp
                 ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/imgui_draw.cpp
                 ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/imgui_tables.cpp
-                ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/imgui_widgets.cpp)
+                ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/imgui_widgets.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends/imgui_impl_sdl3.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends/imgui_impl_sdl3.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends/imgui_impl_sdlgpu3.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends/imgui_impl_sdlgpu3.cpp)
 target_include_directories(vendor INTERFACE
                             ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/
                             ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends)

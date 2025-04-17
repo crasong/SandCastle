@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include <imgui_impl_sdl3.h>
 
 static bool s_Running = true;
 static float deltaTime = 0.0f;
@@ -41,6 +42,7 @@ void Engine::Run() {
 void Engine::PollEvents() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
+        ImGui_ImplSDL3_ProcessEvent(&event);
         switch (event.type) {
             case SDL_EVENT_QUIT:
                 s_Running = false;

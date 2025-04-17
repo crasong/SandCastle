@@ -11,6 +11,8 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;
 #include <assimp/scene.h>
 #include <fstream>
 #include <glm/gtc/matrix_transform.hpp>
+#include <imgui_impl_sdl3.h>
+#include <imgui_impl_sdlgpu3.h>
 #include <SDL3/SDL_vulkan.h>
 #include <SDL3_image/SDL_image.h>
 #include <span>
@@ -68,6 +70,8 @@ bool Renderer::Init(const char* title, int width, int height) {
 
     InitSamplers();
     InitMeshes();
+
+    mUIManager.Init(mWindow, mSDLDevice);
 
     SDL_ShowWindow(mWindow);
 
@@ -571,6 +575,11 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh 
 }
 
 bool Renderer::GPURenderPass(SDL_Window* window) {
+    mUIManager.BeginFrame();
+    ImGui::Render();
+    ImDrawData* drawData = ImGui::GetDrawData();
+    const bool bUIMinimized = (drawData->DisplaySize.x <= 0.0f || drawData->DisplaySize.y <= 0.0f);
+
     SDL_GPUCommandBuffer* commandBuffer(SDL_AcquireGPUCommandBuffer(mSDLDevice));
     if (!commandBuffer) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
@@ -583,6 +592,8 @@ bool Renderer::GPURenderPass(SDL_Window* window) {
         return false;
     }
     if (swapchainTexture) {
+        ImGui_ImplSDLGPU3_PrepareDrawData(drawData, commandBuffer);
+        
         SDL_GPUColorTargetInfo colorTarget{};
         colorTarget.texture = swapchainTexture;
         colorTarget.store_op = SDL_GPU_STOREOP_STORE;
@@ -628,6 +639,12 @@ bool Renderer::GPURenderPass(SDL_Window* window) {
     
             SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mesh.indices.size()), 1, 0, 0, 0);
         }
+
+        // Draw UI
+        if (!bUIMinimized) {
+            ImGui_ImplSDLGPU3_RenderDrawData(drawData, commandBuffer, renderPass);
+        }
+
         SDL_EndGPURenderPass(renderPass);
     }
 
