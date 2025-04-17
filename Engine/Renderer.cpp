@@ -12,6 +12,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;
 #include <fstream>
 #include <glm/gtc/matrix_transform.hpp>
 #include <SDL3/SDL_vulkan.h>
+#include <SDL3_image/SDL_image.h>
 #include <span>
 
 // statics
@@ -24,6 +25,11 @@ static std::vector<std::string> SamplerNames =
 	"LinearWrap",
 	"AnisotropicClamp",
 	"AnisotropicWrap",
+};
+static std::vector<Renderer::ModelDescriptor> Models = 
+{
+    {"viking_room", "viking_room.obj", "viking_room.png"},
+    {"DamagedHelmet", "DamagedHelmet.gltf", "Default_albedo.jpg"},
 };
 
 Renderer::Renderer() {}
@@ -226,24 +232,25 @@ void Renderer::InitSamplers() {
 }
 
 void Renderer::InitMeshes() {
-    std::string filename;
+    const size_t modelIdx = 1;
+    const std::string modelname = Models[modelIdx].foldername;
     Mesh mesh;
-    if (InitMesh(filename, mesh)) {
-        mMeshes[filename] = mesh;
+    if (InitMesh(Models[modelIdx], mesh)) {
+        mMeshes[modelname] = mesh;
     }
     else{
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to initialize mesh of filename: %s", filename.c_str());
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to initialize mesh of filename: %s", modelname.c_str());
     }
 }
 
-bool Renderer::InitMesh(std::string filename, Mesh& mesh) {
+bool Renderer::InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh) {
     
     // Create Mesh resources
     SDL_GPUBufferCreateInfo vertexBufferCreateInfo{};
     SDL_GPUTransferBuffer* vertexTransferBuffer = nullptr;
     SDL_GPUBufferCreateInfo indexBufferCreateInfo{};
     SDL_GPUTransferBuffer* indexTransferBuffer = nullptr;
-    if (!CreateModelGPUResources(mesh, vertexBufferCreateInfo, vertexTransferBuffer, indexBufferCreateInfo, indexTransferBuffer)) {
+    if (!CreateModelGPUResources(modelDescriptor, mesh, vertexBufferCreateInfo, vertexTransferBuffer, indexBufferCreateInfo, indexTransferBuffer)) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create model GPU resources");
         return false;
     }
@@ -251,7 +258,7 @@ bool Renderer::InitMesh(std::string filename, Mesh& mesh) {
     SDL_Surface* imageData = nullptr;
     SDL_GPUTextureCreateInfo colorTextureCreateInfo{};
     SDL_GPUTransferBuffer* textureTransferBuffer = nullptr;
-    if (!CreateTextureGPUResources(mesh, imageData, colorTextureCreateInfo, textureTransferBuffer)) {
+    if (!CreateTextureGPUResources(modelDescriptor, mesh, imageData, colorTextureCreateInfo, textureTransferBuffer)) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create texture GPU resources");
         return false;
     }
@@ -286,6 +293,7 @@ bool Renderer::InitMesh(std::string filename, Mesh& mesh) {
 }
 
 bool Renderer::CreateModelGPUResources(
+    const ModelDescriptor& modelDescriptor,
     Mesh& mesh,
     SDL_GPUBufferCreateInfo& vertexBufferCreateInfo,
     SDL_GPUTransferBuffer*& vertexTransferBuffer,
@@ -293,7 +301,7 @@ bool Renderer::CreateModelGPUResources(
     SDL_GPUTransferBuffer*& indexTransferBuffer) {
     
     // Load the model
-    if (!LoadModel("", mesh)) {
+    if (!LoadModel(modelDescriptor, mesh)) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s", SDL_GetError());
         return false;
     }
@@ -357,13 +365,14 @@ bool Renderer::CreateModelGPUResources(
 
 
 bool Renderer::CreateTextureGPUResources(
+    const ModelDescriptor& modelDescriptor,
     Mesh& mesh,
     SDL_Surface*& imageData,
     SDL_GPUTextureCreateInfo& textureCreateInfo,
     SDL_GPUTransferBuffer*& textureTransferBuffer) {
 
     // Load the image
-    imageData = LoadImage("ravioli.bmp", 4);
+    imageData = LoadImage(modelDescriptor, 4);
     if (!imageData) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load image: %s", SDL_GetError());
         return false;
@@ -383,7 +392,7 @@ bool Renderer::CreateTextureGPUResources(
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create texture: %s", SDL_GetError());
         return false;
     }
-    SDL_SetGPUTextureName(mSDLDevice, mesh.colorTexture, "Ravioli Texture");
+    SDL_SetGPUTextureName(mSDLDevice, mesh.colorTexture, modelDescriptor.textureFilename.c_str());
 
     Resize(); // Setup the Depth Texture
     
@@ -404,6 +413,16 @@ bool Renderer::CreateTextureGPUResources(
     SDL_UnmapGPUTransferBuffer(mSDLDevice, textureTransferBuffer);
     
     return true;
+}
+
+std::string Renderer::GetFolderName(const std::string& filename) const {
+    auto it = std::find_if(Models.begin(), Models.end(), [&filename](const ModelDescriptor& model) {
+        return model.meshFilename == filename || model.textureFilename == filename;
+    });
+    if (it != Models.end()) {
+        return it->foldername;
+    }
+    return std::string{};
 }
 
 SDL_GPUShader* Renderer::LoadShader(
@@ -480,9 +499,10 @@ SDL_GPUShader* Renderer::LoadShader(
 	return shader;
 }
 
-SDL_Surface* Renderer::LoadImage(const std::string& filename, int desiredChannels) {
-    std::string fullPath = std::format("{}/Content/Images/{}", BasePath, filename);
-    SDL_Surface* image = SDL_LoadBMP(fullPath.c_str());
+SDL_Surface* Renderer::LoadImage(const ModelDescriptor& modelDescriptor, int desiredChannels) {
+    // Construct the full path
+    std::string fullPath = std::format("{}/Content/Models/{}/{}", BasePath, modelDescriptor.foldername, modelDescriptor.textureFilename);
+    SDL_Surface* image = IMG_Load(fullPath.c_str());
     SDL_PixelFormat format = SDL_PIXELFORMAT_UNKNOWN;
     if (!image) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load image: %s", SDL_GetError());
@@ -509,101 +529,40 @@ SDL_Surface* Renderer::LoadImage(const std::string& filename, int desiredChannel
     return image;
 }
 
-bool Renderer::LoadModel(const std::string & filename, Renderer::Mesh & outMesh) {
-    if (filename.empty()) {
-        outMesh = {
-            // vertices
-            {
-                // Front face
-                { .position = {-0.5f, -0.5f,  0.5f}, .uv = {0, 4} }, // Bottom-left
-                { .position = { 0.5f, -0.5f,  0.5f}, .uv = {4, 4} }, // Bottom-right
-                { .position = { 0.5f,  0.5f,  0.5f}, .uv = {4, 0} }, // Top-right
-                { .position = {-0.5f,  0.5f,  0.5f}, .uv = {0, 0} }, // Top-left
-    
-                // Back face
-                { .position = {-0.5f, -0.5f, -0.5f}, .uv = {4, 4} }, // Bottom-left
-                { .position = { 0.5f, -0.5f, -0.5f}, .uv = {0, 4} }, // Bottom-right
-                { .position = { 0.5f,  0.5f, -0.5f}, .uv = {0, 0} }, // Top-right
-                { .position = {-0.5f,  0.5f, -0.5f}, .uv = {4, 0} }, // Top-left
-    
-                // Left face
-                { .position = {-0.5f, -0.5f, -0.5f}, .uv = {0, 4} }, // Bottom-left
-                { .position = {-0.5f, -0.5f,  0.5f}, .uv = {4, 4} }, // Bottom-right
-                { .position = {-0.5f,  0.5f,  0.5f}, .uv = {4, 0} }, // Top-right
-                { .position = {-0.5f,  0.5f, -0.5f}, .uv = {0, 0} }, // Top-left
-    
-                // Right face
-                { .position = { 0.5f, -0.5f, -0.5f}, .uv = {4, 4} }, // Bottom-left
-                { .position = { 0.5f, -0.5f,  0.5f}, .uv = {0, 4} }, // Bottom-right
-                { .position = { 0.5f,  0.5f,  0.5f}, .uv = {0, 0} }, // Top-right
-                { .position = { 0.5f,  0.5f, -0.5f}, .uv = {4, 0} }, // Top-left
-    
-                // Top face
-                { .position = {-0.5f,  0.5f,  0.5f}, .uv = {0, 4} }, // Bottom-left
-                { .position = { 0.5f,  0.5f,  0.5f}, .uv = {4, 4} }, // Bottom-right
-                { .position = { 0.5f,  0.5f, -0.5f}, .uv = {4, 0} }, // Top-right
-                { .position = {-0.5f,  0.5f, -0.5f}, .uv = {0, 0} }, // Top-left
-    
-                // Bottom face
-                { .position = {-0.5f, -0.5f,  0.5f}, .uv = {0, 0} }, // Bottom-left
-                { .position = { 0.5f, -0.5f,  0.5f}, .uv = {4, 0} }, // Bottom-right
-                { .position = { 0.5f, -0.5f, -0.5f}, .uv = {4, 4} }, // Top-right
-                { .position = {-0.5f, -0.5f, -0.5f}, .uv = {0, 4} }, // Top-left
-            },
-            // indices
-            {
-                // Front face
-                0, 1, 2, 0, 2, 3,
-                // Back face
-                4, 6, 5, 4, 7, 6,
-                // Left face
-                8, 9, 10, 8, 10, 11,
-                // Right face
-                12, 13, 14, 12, 14, 15,
-                // Top face
-                16, 17, 18, 16, 18, 19,
-                // Bottom face
-                20, 21, 22, 20, 22, 23
-            }
-        };
+bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh & outMesh) {
+    // Construct the full path
+    std::string modelFullPath = std::format("{}/Content/Models/{}/{}", BasePath, modelDescriptor.foldername, modelDescriptor.meshFilename);
+    // Load the model
+    Assimp::Importer importer;
+    const aiScene* scene = importer.ReadFile(modelFullPath, aiProcess_Triangulate | aiProcess_FlipUVs);
+    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->HasMeshes()) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s \nmodel filepath: %s", importer.GetErrorString(), modelFullPath.c_str());
+        return false;
     }
-    else {
-        // Construct the full paths
-        std::string modelNameNoExt = filename.substr(0, filename.find_last_of('.'));
-        std::string modelFullPath = std::format("{}/Content/Models/{}/{}", BasePath, modelNameNoExt, filename);
-        std::string textureFullPath = std::format("{}/Content/Models/{}/Default_albedo.jpg", BasePath, modelNameNoExt, modelNameNoExt);
-        // Load the model
-        Assimp::Importer importer;
-        const aiScene* scene = importer.ReadFile(modelFullPath, aiProcess_Triangulate | aiProcess_FlipUVs);
-        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->HasMeshes()) {
-            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s \nmodel filepath: %s", importer.GetErrorString(), modelFullPath.c_str());
-            return false;
-        }
-        for (size_t i = 0; i < scene->mNumMeshes; ++i) {
-            auto mesh = scene->mMeshes[i];
-            if (mesh->HasPositions()) {
-                outMesh.vertices.reserve(mesh->mNumVertices);
-                for (size_t j = 0; j < mesh->mNumVertices; ++j) {
-                    auto vertex = mesh->mVertices[j];
-                    auto uv = mesh->mTextureCoords[0][j];
-                    outMesh.vertices.push_back({ 
-                        .position = {
-                            vertex.x, 
-                            vertex.y, 
-                            vertex.z
-                        }, 
-                        .uv = {
-                            uv.x, 
-                            uv.y
-                        }
-                    });
-                }
-                for (size_t j = 0; j < mesh->mNumFaces; ++j) {
-                    auto face = mesh->mFaces[j];
-                    outMesh.indices.reserve(face.mNumIndices);
-                    for (size_t k = 0; k < face.mNumIndices; ++k) {
-                        outMesh.indices.push_back(face.mIndices[k]);
+    for (size_t i = 0; i < scene->mNumMeshes; ++i) {
+        auto mesh = scene->mMeshes[i];
+        if (mesh->HasPositions()) {
+            outMesh.vertices.reserve(mesh->mNumVertices);
+            for (size_t j = 0; j < mesh->mNumVertices; ++j) {
+                auto vertex = mesh->mVertices[j];
+                auto uv = mesh->mTextureCoords[0][j];
+                outMesh.vertices.push_back({ 
+                    .position = {
+                        vertex.x, 
+                        vertex.y, 
+                        vertex.z
+                    }, 
+                    .uv = {
+                        uv.x, 
+                        uv.y
                     }
+                });
+            }
+            for (size_t j = 0; j < mesh->mNumFaces; ++j) {
+                auto face = mesh->mFaces[j];
+                outMesh.indices.reserve(face.mNumIndices);
+                for (size_t k = 0; k < face.mNumIndices; ++k) {
+                    outMesh.indices.push_back(face.mIndices[k]);
                 }
             }
         }
@@ -657,11 +616,11 @@ bool Renderer::GPURenderPass(SDL_Window* window) {
             const float fovY = glm::radians(90.0f/mCachedScreenAspectRatio);
             glm::mat4 projectionMatrix = glm::perspective(fovY, mCachedScreenAspectRatio, 0.1f, 100.0f);
             // view matrix
-            glm::mat4 viewMatrix = glm::lookAt(glm::vec3(0, 2, -3), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+            glm::mat4 viewMatrix = glm::lookAt(glm::vec3(0, -3, 2), glm::vec3(0, 0, 1), glm::vec3(0, 0, 1));
             // model matrix
             glm::mat4 modelMatrix = glm::mat4(1.0f);
             modelMatrix = glm::scale(modelMatrix, glm::vec3(mScale));
-            modelMatrix = glm::rotate(modelMatrix, SDL_GetTicks() / 1000.0f, glm::vec3(0, 1, 0));
+            modelMatrix = glm::rotate(modelMatrix, SDL_GetTicks() / 1000.0f, glm::vec3(0, 0, 1));
             modelMatrix = glm::translate(modelMatrix, glm::vec3(0, 0, 0));
             // modelviewprojection matrix
             glm::mat4 mvpMatrix = (projectionMatrix * viewMatrix) * modelMatrix;

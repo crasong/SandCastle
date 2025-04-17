@@ -32,6 +32,12 @@ public:
         SDL_GPUTexture* colorTexture = nullptr;
     };
 
+    struct ModelDescriptor {
+        std::string foldername;
+        std::string meshFilename;
+        std::string textureFilename;
+    };
+
 public:
     Renderer();
     ~Renderer();
@@ -52,9 +58,10 @@ private:
     bool InitPipelines();
     void InitSamplers();
     void InitMeshes();
-    bool InitMesh(std::string filename, Mesh& mesh);
+    bool InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh);
 
     bool CreateModelGPUResources(
+        const ModelDescriptor& modelDescriptor,
         Mesh& mesh,
         SDL_GPUBufferCreateInfo& vertexBufferCreateInfo,
         SDL_GPUTransferBuffer*& vertexTransferBuffer,
@@ -62,11 +69,14 @@ private:
         SDL_GPUTransferBuffer*& indexTransferBuffer
     );
     bool CreateTextureGPUResources(
+        const ModelDescriptor& modelDescriptor,
         Mesh& mesh,
         SDL_Surface*& imageData,
         SDL_GPUTextureCreateInfo& textureCreateInfo,
         SDL_GPUTransferBuffer*& textureTransferBuffer
     );
+
+    std::string GetFolderName(const std::string& filename) const;
 
     SDL_GPUShader* LoadShader(
         SDL_GPUDevice* device,
@@ -75,8 +85,8 @@ private:
         const Uint32 uniformBufferCount,
         const Uint32 storageBufferCount,
         const Uint32 storageTextureCount);
-    SDL_Surface* LoadImage(const std::string& filename, int desiredChannels = 0);
-    bool LoadModel(const std::string& filename, Renderer::Mesh& outMesh);
+    SDL_Surface* LoadImage(const ModelDescriptor& modelDescriptor, int desiredChannels = 0);
+    bool LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh& outMesh);
 
     bool GPURenderPass(SDL_Window* window);
     
