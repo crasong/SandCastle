@@ -1,10 +1,5 @@
 #include "Renderer.h"
 
-#ifdef VULKAN_IMPLEMENTATION
-VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;
-#include <Volk/volk.h>
-#endif
-
 #include <assimp/Importer.hpp>
 #include <assimp/mesh.h>
 #include <assimp/postprocess.h>
@@ -593,7 +588,7 @@ bool Renderer::GPURenderPass(SDL_Window* window) {
     }
     if (swapchainTexture) {
         ImGui_ImplSDLGPU3_PrepareDrawData(drawData, commandBuffer);
-        
+
         SDL_GPUColorTargetInfo colorTarget{};
         colorTarget.texture = swapchainTexture;
         colorTarget.store_op = SDL_GPU_STOREOP_STORE;
@@ -731,45 +726,3 @@ void Renderer::DecreaseScale() {
         mScale = 0.2f;
     }
 }
-
-/* To Init Vulkan, the following are needed:
-    1. Instance: the Vulkan API Context. This is where we enable extensions for things
-        like validation layers, logging, and more. It is the root/global context of the app.
-    2. PhysicalDevice: enumerate the hardware for all 'GPUs', and query their features.
-    3. Device: the driver on the GPU. Extensions can be enabled for more functionality at
-        the cost of speed. We can create multiple devices for 'multi-GPU' support
-    4. Swapchain: this is a list of 'images' that are needed to send 'images' to the screen.
-        The number of 'images' in the Swapchain is what allows double or triple buffering.
-        The Swapchain must be rebuilt if the image changes size or format.
-*/
-#ifdef VULKAN_IMPLEMENTATION
-void Renderer::InitVulkan(SDL_Window* window) {
-    SDL_Vulkan_LoadLibrary(nullptr);
-    volkInitializeCustom((PFN_vkGetInstanceProcAddr)SDL_Vulkan_GetVkGetInstanceProcAddr());
-
-    // Get required extensions from SDL
-    uint32_t extCount = 0;
-    auto requiredExtensions = SDL_Vulkan_GetInstanceExtensions(&extCount);
-
-    vk::ApplicationInfo appInfo;
-    appInfo.pApplicationName = "SandCastleGame";
-    appInfo.pEngineName = "SandCastleEngine";
-    appInfo.apiVersion = VK_API_VERSION_1_2;
-
-    vk::InstanceCreateInfo createInfo;
-    createInfo.pApplicationInfo = &appInfo;
-    createInfo.enabledExtensionCount = extCount;
-    createInfo.ppEnabledExtensionNames = requiredExtensions;
-    createInfo.flags = vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR;
-
-    mInstance = vk::createInstance(createInfo);
-    mDispatchLoader.init(mInstance);
-    volkLoadInstanceOnly(mInstance);
-
-    // We're assuming the first Physical Device is the one we want
-    // But we probably want to make sure we're using the dGPU and not the iGPU
-    mPhysicalDevice = mInstance.enumeratePhysicalDevices().front();
-
-
-}
-#endif

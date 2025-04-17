@@ -1,9 +1,5 @@
 #pragma once
 
-#ifdef VULKAN_IMPLEMENTATION
-#include <vulkan/vulkan.hpp>
-#endif
-
 #include <glm/glm.hpp>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gpu.h>
@@ -91,10 +87,6 @@ private:
 
     bool GPURenderPass(SDL_Window* window);
     
-    #ifdef VULKAN_IMPLEMENTATION
-    void InitVulkan(SDL_Window* window);
-    #endif
-
 private:
     UIManager mUIManager;
     
@@ -111,13 +103,4 @@ private:
     float mScale = 1.0f;
     const float mScaleStep = 0.1f;
     float mCachedScreenAspectRatio = 1.0f;
-
-    #ifdef VULKAN_IMPLEMENTATION
-    vk::Instance mInstance;
-    vk::PhysicalDevice mPhysicalDevice;
-    vk::Device mDevice;
-    vk::Queue mQueue;
-    vk::SurfaceKHR mSurface;
-    vk::detail::DispatchLoaderDynamic mDispatchLoader; // Not sure if I want to enforce passing this every time
-    #endif
 };

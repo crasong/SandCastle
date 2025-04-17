@@ -12,10 +12,6 @@ add_subdirectory(SDL_image)
 # Add GLM
 add_subdirectory(glm)
 
-# Get Vulkan
-add_subdirectory(Vulkan-Headers)
-add_subdirectory(volk)
-
 # Add Assimp
 set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -27,12 +23,11 @@ add_library(vendor INTERFACE)
 
 # Link Libraries
 target_link_libraries(vendor INTERFACE 
+        assimp
+        glm::glm
         SDL3::SDL3
         SDL3_image::SDL3_image
-        glm::glm
-        assimp
-        Vulkan::Headers
-        volk)
+        )
 
 # Link imgui
 target_sources(vendor INTERFACE
@@ -53,8 +48,4 @@ target_include_directories(vendor INTERFACE
                             ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends)
 
 target_compile_definitions(vendor INTERFACE 
-        VK_NO_PROTOTYPES
-        VOLK_IMPLEMENTATION
-        VULKAN_HPP_NO_CONSTRUCTORS=1
-        VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
         )
