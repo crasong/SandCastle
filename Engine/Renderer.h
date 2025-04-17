@@ -27,6 +27,9 @@ public:
     struct Mesh {
         std::vector<PositionTextureVertex> vertices;
         std::vector<Uint32> indices;
+        SDL_GPUBuffer* vertexBuffer = nullptr;
+        SDL_GPUBuffer* indexBuffer = nullptr;
+        SDL_GPUTexture* colorTexture = nullptr;
     };
 
 public:
@@ -47,6 +50,23 @@ public:
 private:
     void InitAssetLoader();
     bool InitPipelines();
+    void InitSamplers();
+    void InitMeshes();
+    bool InitMesh(std::string filename, Mesh& mesh);
+
+    bool CreateModelGPUResources(
+        Mesh& mesh,
+        SDL_GPUBufferCreateInfo& vertexBufferCreateInfo,
+        SDL_GPUTransferBuffer*& vertexTransferBuffer,
+        SDL_GPUBufferCreateInfo& indexBufferCreateInfo,
+        SDL_GPUTransferBuffer*& indexTransferBuffer
+    );
+    bool CreateTextureGPUResources(
+        Mesh& mesh,
+        SDL_Surface*& imageData,
+        SDL_GPUTextureCreateInfo& textureCreateInfo,
+        SDL_GPUTransferBuffer*& textureTransferBuffer
+    );
 
     SDL_GPUShader* LoadShader(
         SDL_GPUDevice* device,
@@ -56,6 +76,7 @@ private:
         const Uint32 storageBufferCount,
         const Uint32 storageTextureCount);
     SDL_Surface* LoadImage(const std::string& filename, int desiredChannels = 0);
+    bool LoadModel(const std::string& filename, Renderer::Mesh& outMesh);
 
     bool GPURenderPass(SDL_Window* window);
     
@@ -66,9 +87,6 @@ private:
 private:
     SDL_Window* mWindow = nullptr;
     SDL_GPUDevice* mSDLDevice = nullptr;
-    SDL_GPUBuffer* mVertexBuffer = nullptr;
-    SDL_GPUBuffer* mIndexBuffer = nullptr;
-    SDL_GPUTexture* mColorTexture = nullptr;
     SDL_GPUTexture* mDepthTexture = nullptr;
     std::vector<SDL_GPUSampler*> mSamplers;
 
@@ -76,7 +94,8 @@ private:
 
     Uint8 mCurrentSamplerIndex = 0;
     RenderMode mRenderMode = RenderMode::Fill;
-    Mesh mMesh;
+
+    std::unordered_map<std::string, Mesh> mMeshes;
 
     float mScale = 1.0f;
     const float mScaleStep = 0.1f;

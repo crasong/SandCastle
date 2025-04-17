@@ -5,6 +5,10 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;
 #include <Volk/volk.h>
 #endif
 
+#include <assimp/Importer.hpp>
+#include <assimp/mesh.h>
+#include <assimp/postprocess.h>
+#include <assimp/scene.h>
 #include <fstream>
 #include <glm/gtc/matrix_transform.hpp>
 #include <SDL3/SDL_vulkan.h>
@@ -56,6 +60,9 @@ bool Renderer::Init(const char* title, int width, int height) {
         return false;
     }
 
+    InitSamplers();
+    InitMeshes();
+
     SDL_ShowWindow(mWindow);
 
     return true;
@@ -66,62 +73,6 @@ void Renderer::InitAssetLoader() {
 }
 
 bool Renderer::InitPipelines() {
-    mMesh = {
-        // vertices
-        {
-            // Front face
-            { .position = {-0.5f, -0.5f,  0.5f}, .uv = {0, 4} }, // Bottom-left
-            { .position = { 0.5f, -0.5f,  0.5f}, .uv = {4, 4} }, // Bottom-right
-            { .position = { 0.5f,  0.5f,  0.5f}, .uv = {4, 0} }, // Top-right
-            { .position = {-0.5f,  0.5f,  0.5f}, .uv = {0, 0} }, // Top-left
-
-            // Back face
-            { .position = {-0.5f, -0.5f, -0.5f}, .uv = {4, 4} }, // Bottom-left
-            { .position = { 0.5f, -0.5f, -0.5f}, .uv = {0, 4} }, // Bottom-right
-            { .position = { 0.5f,  0.5f, -0.5f}, .uv = {0, 0} }, // Top-right
-            { .position = {-0.5f,  0.5f, -0.5f}, .uv = {4, 0} }, // Top-left
-
-            // Left face
-            { .position = {-0.5f, -0.5f, -0.5f}, .uv = {0, 4} }, // Bottom-left
-            { .position = {-0.5f, -0.5f,  0.5f}, .uv = {4, 4} }, // Bottom-right
-            { .position = {-0.5f,  0.5f,  0.5f}, .uv = {4, 0} }, // Top-right
-            { .position = {-0.5f,  0.5f, -0.5f}, .uv = {0, 0} }, // Top-left
-
-            // Right face
-            { .position = { 0.5f, -0.5f, -0.5f}, .uv = {4, 4} }, // Bottom-left
-            { .position = { 0.5f, -0.5f,  0.5f}, .uv = {0, 4} }, // Bottom-right
-            { .position = { 0.5f,  0.5f,  0.5f}, .uv = {0, 0} }, // Top-right
-            { .position = { 0.5f,  0.5f, -0.5f}, .uv = {4, 0} }, // Top-left
-
-            // Top face
-            { .position = {-0.5f,  0.5f,  0.5f}, .uv = {0, 4} }, // Bottom-left
-            { .position = { 0.5f,  0.5f,  0.5f}, .uv = {4, 4} }, // Bottom-right
-            { .position = { 0.5f,  0.5f, -0.5f}, .uv = {4, 0} }, // Top-right
-            { .position = {-0.5f,  0.5f, -0.5f}, .uv = {0, 0} }, // Top-left
-
-            // Bottom face
-            { .position = {-0.5f, -0.5f,  0.5f}, .uv = {0, 0} }, // Bottom-left
-            { .position = { 0.5f, -0.5f,  0.5f}, .uv = {4, 0} }, // Bottom-right
-            { .position = { 0.5f, -0.5f, -0.5f}, .uv = {4, 4} }, // Top-right
-            { .position = {-0.5f, -0.5f, -0.5f}, .uv = {0, 4} }, // Top-left
-        },
-        // indices
-        {
-            // Front face
-            0, 1, 2, 0, 2, 3,
-            // Back face
-            4, 6, 5, 4, 7, 6,
-            // Left face
-            8, 9, 10, 8, 10, 11,
-            // Right face
-            12, 13, 14, 12, 14, 15,
-            // Top face
-            16, 17, 18, 16, 18, 19,
-            // Bottom face
-            20, 21, 22, 20, 22, 23
-        }
-    };
-    
     SDL_GPUShader* vertexShader = LoadShader(mSDLDevice, "TexturedQuadWithMatrix.vert", 0, 1, 0, 0);
     if (!vertexShader) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Vertex Shader failed to load");
@@ -131,13 +82,6 @@ bool Renderer::InitPipelines() {
     SDL_GPUShader* fragmentShader = LoadShader(mSDLDevice, "TexturedQuad.frag", 1, 0, 0, 0);
     if (!fragmentShader) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Vertex Shader failed to load");
-        return false;
-    }
-
-    // Load the image
-    SDL_Surface* imageData = LoadImage("ravioli.bmp", 4);
-    if (!imageData) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load image: %s", SDL_GetError());
         return false;
     }
 
@@ -210,6 +154,10 @@ bool Renderer::InitPipelines() {
     SDL_ReleaseGPUShader(mSDLDevice, vertexShader);
     SDL_ReleaseGPUShader(mSDLDevice, fragmentShader);
 
+    return true;
+}
+
+void Renderer::InitSamplers() {
     // Create Samplers
 	//"PointClamp",
     SDL_GPUSamplerCreateInfo pointClampSamplerCreateInfo{
@@ -275,46 +223,99 @@ bool Renderer::InitPipelines() {
         .enable_anisotropy = true,
     };
     mSamplers.emplace_back(SDL_CreateGPUSampler(mSDLDevice, &anisotropicWrapSamplerCreateInfo));
+}
 
-    // Create GPU resources
+void Renderer::InitMeshes() {
+    std::string filename;
+    Mesh mesh;
+    if (InitMesh(filename, mesh)) {
+        mMeshes[filename] = mesh;
+    }
+    else{
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to initialize mesh of filename: %s", filename.c_str());
+    }
+}
+
+bool Renderer::InitMesh(std::string filename, Mesh& mesh) {
+    
+    // Create Mesh resources
     SDL_GPUBufferCreateInfo vertexBufferCreateInfo{};
+    SDL_GPUTransferBuffer* vertexTransferBuffer = nullptr;
+    SDL_GPUBufferCreateInfo indexBufferCreateInfo{};
+    SDL_GPUTransferBuffer* indexTransferBuffer = nullptr;
+    if (!CreateModelGPUResources(mesh, vertexBufferCreateInfo, vertexTransferBuffer, indexBufferCreateInfo, indexTransferBuffer)) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create model GPU resources");
+        return false;
+    }
+    // Create Texture resources
+    SDL_Surface* imageData = nullptr;
+    SDL_GPUTextureCreateInfo colorTextureCreateInfo{};
+    SDL_GPUTransferBuffer* textureTransferBuffer = nullptr;
+    if (!CreateTextureGPUResources(mesh, imageData, colorTextureCreateInfo, textureTransferBuffer)) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create texture GPU resources");
+        return false;
+    }
+
+    // Upload the transfer data to the vertex buffer
+    SDL_GPUCommandBuffer* uploadCmdBuff = SDL_AcquireGPUCommandBuffer(mSDLDevice);
+    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuff);
+    {   // upload vertex data
+        SDL_GPUTransferBufferLocation transferBufferLocation{ vertexTransferBuffer, 0 };
+        SDL_GPUBufferRegion bufferRegion{ mesh.vertexBuffer, 0, vertexBufferCreateInfo.size };
+        SDL_UploadToGPUBuffer(copyPass, &transferBufferLocation, &bufferRegion, false);
+    }
+    {   // upload index data
+        SDL_GPUTransferBufferLocation transferBufferLocation{ indexTransferBuffer, 0 };
+        SDL_GPUBufferRegion bufferRegion{ mesh.indexBuffer, 0, indexBufferCreateInfo.size };
+        SDL_UploadToGPUBuffer(copyPass, &transferBufferLocation, &bufferRegion, false);
+    }
+    {   // upload texture data
+        SDL_GPUTextureTransferInfo textureTransferInfo{ .transfer_buffer = textureTransferBuffer, .offset = 0 };
+        SDL_GPUTextureRegion textureRegion{ .texture = mesh.colorTexture, .w = static_cast<Uint32>(imageData->w), .h = static_cast<Uint32>(imageData->h), .d = 1 };
+        SDL_UploadToGPUTexture(copyPass, &textureTransferInfo, &textureRegion, false);
+    }
+
+    SDL_EndGPUCopyPass(copyPass);
+    SDL_SubmitGPUCommandBuffer(uploadCmdBuff);
+
+    SDL_DestroySurface(imageData);
+    SDL_ReleaseGPUTransferBuffer(mSDLDevice, vertexTransferBuffer);
+    SDL_ReleaseGPUTransferBuffer(mSDLDevice, indexTransferBuffer);
+    SDL_ReleaseGPUTransferBuffer(mSDLDevice, textureTransferBuffer);
+    return true;
+}
+
+bool Renderer::CreateModelGPUResources(
+    Mesh& mesh,
+    SDL_GPUBufferCreateInfo& vertexBufferCreateInfo,
+    SDL_GPUTransferBuffer*& vertexTransferBuffer,
+    SDL_GPUBufferCreateInfo& indexBufferCreateInfo,
+    SDL_GPUTransferBuffer*& indexTransferBuffer) {
+    
+    // Load the model
+    if (!LoadModel("", mesh)) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s", SDL_GetError());
+        return false;
+    }
+    // Create GPU resources
     vertexBufferCreateInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
-    vertexBufferCreateInfo.size = static_cast<Uint32>(mMesh.vertices.size() * sizeof(PositionTextureVertex));
-    mVertexBuffer = SDL_CreateGPUBuffer(mSDLDevice, &vertexBufferCreateInfo);
-    if (!mVertexBuffer) {
+    vertexBufferCreateInfo.size = static_cast<Uint32>(mesh.vertices.size() * sizeof(PositionTextureVertex));
+    mesh.vertexBuffer = SDL_CreateGPUBuffer(mSDLDevice, &vertexBufferCreateInfo);
+    if (!mesh.vertexBuffer) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Vertex' buffer");
         return false;
     }
-    SDL_SetGPUBufferName(mSDLDevice, mVertexBuffer, "Vertex Buffer");
+    SDL_SetGPUBufferName(mSDLDevice, mesh.vertexBuffer, "Vertex Buffer");
 
-    SDL_GPUBufferCreateInfo indexBufferCreateInfo{};
     indexBufferCreateInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
-    indexBufferCreateInfo.size = static_cast<Uint32>(mMesh.indices.size() * sizeof(Uint32));
-    mIndexBuffer =  SDL_CreateGPUBuffer(mSDLDevice, &indexBufferCreateInfo);
-    if (!mIndexBuffer) {
+    indexBufferCreateInfo.size = static_cast<Uint32>(mesh.indices.size() * sizeof(Uint32));
+    mesh.indexBuffer =  SDL_CreateGPUBuffer(mSDLDevice, &indexBufferCreateInfo);
+    if (!mesh.indexBuffer) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Index' buffer");
         return false;
     }
-    SDL_SetGPUBufferName(mSDLDevice, mIndexBuffer, "Index Buffer");
+    SDL_SetGPUBufferName(mSDLDevice, mesh.indexBuffer, "Index Buffer");
 
-    SDL_GPUTextureCreateInfo colorTextureCreateInfo{
-		.type = SDL_GPU_TEXTURETYPE_2D,
-		.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-		.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
-		.width = static_cast<Uint32>(imageData->w),
-		.height = static_cast<Uint32>(imageData->h),
-		.layer_count_or_depth = 1,
-		.num_levels = 1,
-    };
-    mColorTexture = SDL_CreateGPUTexture(mSDLDevice, &colorTextureCreateInfo);
-    if (!mColorTexture) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create texture: %s", SDL_GetError());
-        return false;
-    }
-    SDL_SetGPUTextureName(mSDLDevice, mColorTexture, "Ravioli Texture");
-
-    Resize(); // Setup the Depth Texture
-    
     SDL_GPUTransferBufferCreateInfo vertexTransferBufferCreateInfo{};
     vertexTransferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
     vertexTransferBufferCreateInfo.size = vertexBufferCreateInfo.size;
@@ -323,13 +324,13 @@ bool Renderer::InitPipelines() {
     indexTransferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
     indexTransferBufferCreateInfo.size = indexBufferCreateInfo.size;
 
-    SDL_GPUTransferBuffer* vertexTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &vertexTransferBufferCreateInfo);
+    vertexTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &vertexTransferBufferCreateInfo);
     if (!vertexTransferBuffer) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create GPU vertex transfer buffer");
         return false;
     }
     
-    SDL_GPUTransferBuffer* indexTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &indexTransferBufferCreateInfo);
+    indexTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &indexTransferBufferCreateInfo);
     if (!indexTransferBuffer) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create GPU index transfer buffer");
         return false;
@@ -342,22 +343,56 @@ bool Renderer::InitPipelines() {
         return false;
     }
     else {
-        std::span transferBufferData{ static_cast<PositionTextureVertex*>(vertexBufferDataPtr), mMesh.vertices.size()};
-        std::ranges::copy(mMesh.vertices, transferBufferData.begin());
+        std::span transferBufferData{ static_cast<PositionTextureVertex*>(vertexBufferDataPtr), mesh.vertices.size()};
+        std::ranges::copy(mesh.vertices, transferBufferData.begin());
 
-        std::span indexBufferData{ static_cast<Uint32*>(indexBufferDataPtr), mMesh.indices.size()};
-        std::ranges::copy(mMesh.indices, indexBufferData.begin());
+        std::span indexBufferData{ static_cast<Uint32*>(indexBufferDataPtr), mesh.indices.size()};
+        std::ranges::copy(mesh.indices, indexBufferData.begin());
     }
 
     SDL_UnmapGPUTransferBuffer(mSDLDevice, vertexTransferBuffer);
     SDL_UnmapGPUTransferBuffer(mSDLDevice, indexTransferBuffer);
+    return true;
+}
 
+
+bool Renderer::CreateTextureGPUResources(
+    Mesh& mesh,
+    SDL_Surface*& imageData,
+    SDL_GPUTextureCreateInfo& textureCreateInfo,
+    SDL_GPUTransferBuffer*& textureTransferBuffer) {
+
+    // Load the image
+    imageData = LoadImage("ravioli.bmp", 4);
+    if (!imageData) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load image: %s", SDL_GetError());
+        return false;
+    }
+
+    textureCreateInfo = SDL_GPUTextureCreateInfo{
+        .type = SDL_GPU_TEXTURETYPE_2D,
+        .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+        .width = static_cast<Uint32>(imageData->w),
+        .height = static_cast<Uint32>(imageData->h),
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+    };
+    mesh.colorTexture = SDL_CreateGPUTexture(mSDLDevice, &textureCreateInfo);
+    if (!mesh.colorTexture) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create texture: %s", SDL_GetError());
+        return false;
+    }
+    SDL_SetGPUTextureName(mSDLDevice, mesh.colorTexture, "Ravioli Texture");
+
+    Resize(); // Setup the Depth Texture
+    
     // Set the texture data
     SDL_GPUTransferBufferCreateInfo textureTransferBufferCreateInfo{
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
         .size = static_cast<Uint32>(imageData->h * imageData->w * 4),
     };
-    SDL_GPUTransferBuffer* textureTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &textureTransferBufferCreateInfo);
+    textureTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &textureTransferBufferCreateInfo);
     void* textureDataPtr = static_cast<Uint8*>(SDL_MapGPUTransferBuffer(mSDLDevice, textureTransferBuffer, false));
     if (!textureDataPtr) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to map GPU transfer buffer data pointer for texture");
@@ -367,32 +402,7 @@ bool Renderer::InitPipelines() {
         SDL_memcpy(textureDataPtr, imageData->pixels, textureTransferBufferCreateInfo.size);
     }
     SDL_UnmapGPUTransferBuffer(mSDLDevice, textureTransferBuffer);
-
-    // Upload the transfer data to the vertex buffer
-    SDL_GPUCommandBuffer* uploadCmdBuff = SDL_AcquireGPUCommandBuffer(mSDLDevice);
-    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuff);
-    {   // upload vertex data
-        SDL_GPUTransferBufferLocation transferBufferLocation{ vertexTransferBuffer, 0 };
-        SDL_GPUBufferRegion bufferRegion{ mVertexBuffer, 0, vertexBufferCreateInfo.size };
-        SDL_UploadToGPUBuffer(copyPass, &transferBufferLocation, &bufferRegion, false);
-    }
-    {   // upload index data
-        SDL_GPUTransferBufferLocation transferBufferLocation{ indexTransferBuffer, 0 };
-        SDL_GPUBufferRegion bufferRegion{ mIndexBuffer, 0, indexBufferCreateInfo.size };
-        SDL_UploadToGPUBuffer(copyPass, &transferBufferLocation, &bufferRegion, false);
-    }
-    {   // upload texture data
-        SDL_GPUTextureTransferInfo textureTransferInfo{ .transfer_buffer = textureTransferBuffer, .offset = 0 };
-        SDL_GPUTextureRegion textureRegion{ .texture = mColorTexture, .w = static_cast<Uint32>(imageData->w), .h = static_cast<Uint32>(imageData->h), .d = 1 };
-        SDL_UploadToGPUTexture(copyPass, &textureTransferInfo, &textureRegion, false);
-    }
-
-    SDL_EndGPUCopyPass(copyPass);
-    SDL_SubmitGPUCommandBuffer(uploadCmdBuff);
-    SDL_DestroySurface(imageData);
-    SDL_ReleaseGPUTransferBuffer(mSDLDevice, vertexTransferBuffer);
-    SDL_ReleaseGPUTransferBuffer(mSDLDevice, indexTransferBuffer);
-
+    
     return true;
 }
 
@@ -403,6 +413,7 @@ SDL_GPUShader* Renderer::LoadShader(
     const Uint32 uniformBufferCount,
     const Uint32 storageBufferCount,
     const Uint32 storageTextureCount) {
+
     // Auto-detect the shader stage from the file name for convenience
     SDL_GPUShaderStage stage;
     if (shaderFilename.contains(".vert"))
@@ -498,6 +509,108 @@ SDL_Surface* Renderer::LoadImage(const std::string& filename, int desiredChannel
     return image;
 }
 
+bool Renderer::LoadModel(const std::string & filename, Renderer::Mesh & outMesh) {
+    if (filename.empty()) {
+        outMesh = {
+            // vertices
+            {
+                // Front face
+                { .position = {-0.5f, -0.5f,  0.5f}, .uv = {0, 4} }, // Bottom-left
+                { .position = { 0.5f, -0.5f,  0.5f}, .uv = {4, 4} }, // Bottom-right
+                { .position = { 0.5f,  0.5f,  0.5f}, .uv = {4, 0} }, // Top-right
+                { .position = {-0.5f,  0.5f,  0.5f}, .uv = {0, 0} }, // Top-left
+    
+                // Back face
+                { .position = {-0.5f, -0.5f, -0.5f}, .uv = {4, 4} }, // Bottom-left
+                { .position = { 0.5f, -0.5f, -0.5f}, .uv = {0, 4} }, // Bottom-right
+                { .position = { 0.5f,  0.5f, -0.5f}, .uv = {0, 0} }, // Top-right
+                { .position = {-0.5f,  0.5f, -0.5f}, .uv = {4, 0} }, // Top-left
+    
+                // Left face
+                { .position = {-0.5f, -0.5f, -0.5f}, .uv = {0, 4} }, // Bottom-left
+                { .position = {-0.5f, -0.5f,  0.5f}, .uv = {4, 4} }, // Bottom-right
+                { .position = {-0.5f,  0.5f,  0.5f}, .uv = {4, 0} }, // Top-right
+                { .position = {-0.5f,  0.5f, -0.5f}, .uv = {0, 0} }, // Top-left
+    
+                // Right face
+                { .position = { 0.5f, -0.5f, -0.5f}, .uv = {4, 4} }, // Bottom-left
+                { .position = { 0.5f, -0.5f,  0.5f}, .uv = {0, 4} }, // Bottom-right
+                { .position = { 0.5f,  0.5f,  0.5f}, .uv = {0, 0} }, // Top-right
+                { .position = { 0.5f,  0.5f, -0.5f}, .uv = {4, 0} }, // Top-left
+    
+                // Top face
+                { .position = {-0.5f,  0.5f,  0.5f}, .uv = {0, 4} }, // Bottom-left
+                { .position = { 0.5f,  0.5f,  0.5f}, .uv = {4, 4} }, // Bottom-right
+                { .position = { 0.5f,  0.5f, -0.5f}, .uv = {4, 0} }, // Top-right
+                { .position = {-0.5f,  0.5f, -0.5f}, .uv = {0, 0} }, // Top-left
+    
+                // Bottom face
+                { .position = {-0.5f, -0.5f,  0.5f}, .uv = {0, 0} }, // Bottom-left
+                { .position = { 0.5f, -0.5f,  0.5f}, .uv = {4, 0} }, // Bottom-right
+                { .position = { 0.5f, -0.5f, -0.5f}, .uv = {4, 4} }, // Top-right
+                { .position = {-0.5f, -0.5f, -0.5f}, .uv = {0, 4} }, // Top-left
+            },
+            // indices
+            {
+                // Front face
+                0, 1, 2, 0, 2, 3,
+                // Back face
+                4, 6, 5, 4, 7, 6,
+                // Left face
+                8, 9, 10, 8, 10, 11,
+                // Right face
+                12, 13, 14, 12, 14, 15,
+                // Top face
+                16, 17, 18, 16, 18, 19,
+                // Bottom face
+                20, 21, 22, 20, 22, 23
+            }
+        };
+    }
+    else {
+        // Construct the full paths
+        std::string modelNameNoExt = filename.substr(0, filename.find_last_of('.'));
+        std::string modelFullPath = std::format("{}/Content/Models/{}/{}", BasePath, modelNameNoExt, filename);
+        std::string textureFullPath = std::format("{}/Content/Models/{}/Default_albedo.jpg", BasePath, modelNameNoExt, modelNameNoExt);
+        // Load the model
+        Assimp::Importer importer;
+        const aiScene* scene = importer.ReadFile(modelFullPath, aiProcess_Triangulate | aiProcess_FlipUVs);
+        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->HasMeshes()) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s \nmodel filepath: %s", importer.GetErrorString(), modelFullPath.c_str());
+            return false;
+        }
+        for (size_t i = 0; i < scene->mNumMeshes; ++i) {
+            auto mesh = scene->mMeshes[i];
+            if (mesh->HasPositions()) {
+                outMesh.vertices.reserve(mesh->mNumVertices);
+                for (size_t j = 0; j < mesh->mNumVertices; ++j) {
+                    auto vertex = mesh->mVertices[j];
+                    auto uv = mesh->mTextureCoords[0][j];
+                    outMesh.vertices.push_back({ 
+                        .position = {
+                            vertex.x, 
+                            vertex.y, 
+                            vertex.z
+                        }, 
+                        .uv = {
+                            uv.x, 
+                            uv.y
+                        }
+                    });
+                }
+                for (size_t j = 0; j < mesh->mNumFaces; ++j) {
+                    auto face = mesh->mFaces[j];
+                    outMesh.indices.reserve(face.mNumIndices);
+                    for (size_t k = 0; k < face.mNumIndices; ++k) {
+                        outMesh.indices.push_back(face.mIndices[k]);
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+
 bool Renderer::GPURenderPass(SDL_Window* window) {
     SDL_GPUCommandBuffer* commandBuffer(SDL_AcquireGPUCommandBuffer(mSDLDevice));
     if (!commandBuffer) {
@@ -529,28 +642,33 @@ bool Renderer::GPURenderPass(SDL_Window* window) {
             SDL_BeginGPURenderPass(commandBuffer, colorTargets.data(), static_cast<Uint32>(colorTargets.size()), &depthStencilTarget)
         };
 
-        SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);
-        std::vector<SDL_GPUBufferBinding> bindings{{mVertexBuffer, 0}};
-        SDL_BindGPUVertexBuffers(renderPass, 0, bindings.data(), static_cast<Uint32>(bindings.size()));
-        SDL_GPUBufferBinding indexBufferBinding{mIndexBuffer, 0};
-        SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-        SDL_GPUTextureSamplerBinding textureSamplerBinding{mColorTexture, mSamplers[mCurrentSamplerIndex]};
-        SDL_BindGPUFragmentSamplers(renderPass, 0, &textureSamplerBinding, 1);
+        for (auto& namedMesh : mMeshes) {
+            Mesh& mesh = namedMesh.second;
 
-        // projection matrix
-        const float fovY = glm::radians(90.0f/mCachedScreenAspectRatio);
-        glm::mat4 projectionMatrix = glm::perspective(fovY, mCachedScreenAspectRatio, 0.1f, 100.0f);
-        // view matrix
-        glm::mat4 viewMatrix = glm::lookAt(glm::vec3(0, 2, -3), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-        // model matrix
-        glm::mat4 modelMatrix = glm::mat4(1.0f);
-        modelMatrix = glm::scale(modelMatrix, glm::vec3(mScale));
-        modelMatrix = glm::rotate(modelMatrix, SDL_GetTicks() / 1000.0f, glm::vec3(0, 1, 0));
-        // modelviewprojection matrix
-        glm::mat4 mvpMatrix = (projectionMatrix * viewMatrix) * modelMatrix;
-        SDL_PushGPUVertexUniformData(commandBuffer, 0, &mvpMatrix, sizeof(glm::mat4));
-
-        SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mMesh.indices.size()), 1, 0, 0, 0);
+            SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);
+            std::vector<SDL_GPUBufferBinding> bindings{{mesh.vertexBuffer, 0}};
+            SDL_BindGPUVertexBuffers(renderPass, 0, bindings.data(), static_cast<Uint32>(bindings.size()));
+            SDL_GPUBufferBinding indexBufferBinding{mesh.indexBuffer, 0};
+            SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+            SDL_GPUTextureSamplerBinding textureSamplerBinding{mesh.colorTexture, mSamplers[mCurrentSamplerIndex]};
+            SDL_BindGPUFragmentSamplers(renderPass, 0, &textureSamplerBinding, 1);
+    
+            // projection matrix
+            const float fovY = glm::radians(90.0f/mCachedScreenAspectRatio);
+            glm::mat4 projectionMatrix = glm::perspective(fovY, mCachedScreenAspectRatio, 0.1f, 100.0f);
+            // view matrix
+            glm::mat4 viewMatrix = glm::lookAt(glm::vec3(0, 2, -3), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+            // model matrix
+            glm::mat4 modelMatrix = glm::mat4(1.0f);
+            modelMatrix = glm::scale(modelMatrix, glm::vec3(mScale));
+            modelMatrix = glm::rotate(modelMatrix, SDL_GetTicks() / 1000.0f, glm::vec3(0, 1, 0));
+            modelMatrix = glm::translate(modelMatrix, glm::vec3(0, 0, 0));
+            // modelviewprojection matrix
+            glm::mat4 mvpMatrix = (projectionMatrix * viewMatrix) * modelMatrix;
+            SDL_PushGPUVertexUniformData(commandBuffer, 0, &mvpMatrix, sizeof(glm::mat4));
+    
+            SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mesh.indices.size()), 1, 0, 0, 0);
+        }
         SDL_EndGPURenderPass(renderPass);
     }
 
@@ -575,9 +693,13 @@ void Renderer::Shutdown() {
     for (auto sampler : mSamplers) {
         SDL_ReleaseGPUSampler(mSDLDevice, sampler);
     }
-    if (mVertexBuffer) SDL_ReleaseGPUBuffer(mSDLDevice, mVertexBuffer);
-    if (mIndexBuffer) SDL_ReleaseGPUBuffer(mSDLDevice, mIndexBuffer);
-    if (mColorTexture) SDL_ReleaseGPUTexture(mSDLDevice, mColorTexture);
+    
+    for (auto& namedMesh : mMeshes) {
+        Mesh& mesh = namedMesh.second;
+        if (mesh.vertexBuffer) SDL_ReleaseGPUBuffer(mSDLDevice, mesh.vertexBuffer);
+        if (mesh.indexBuffer) SDL_ReleaseGPUBuffer(mSDLDevice, mesh.indexBuffer);
+        if (mesh.colorTexture) SDL_ReleaseGPUTexture(mSDLDevice, mesh.colorTexture);
+    }
     if (mDepthTexture) SDL_ReleaseGPUTexture(mSDLDevice, mDepthTexture);
     if (mWindow) SDL_DestroyWindow(mWindow);
 }
