@@ -53,9 +53,14 @@ void Engine::Shutdown() {
         for (auto& system : systemList) {
             if (system) {
                 system->Shutdown();
+                delete system;
             }
         }
     }
+    for (auto& entity : mEntities) {
+        delete entity;
+    }
+    mEntities.clear();
     SDL_Quit();
 }
 
