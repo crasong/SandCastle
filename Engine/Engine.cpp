@@ -25,16 +25,24 @@ bool Engine::Init() {
     AddSystem(new MoveSystem());
 
     // Make sample entity
-    //Entity entity;
-    //DisplayComponent display;
-    //display.mMesh = &mRenderer.mMeshes["DamagedHelmet"];
-    //entity.AddComponent<DisplayComponent>(display);
-    //TransformComponent transform;
-    //transform.mPosition = {1.0f, 2.0f, 3.0f};
-    //entity.AddComponent<TransformComponent>(transform);
-    //VelocityComponent velocity;
-    //entity.AddComponent<VelocityComponent>(velocity);
-    //AddEntity(&entity);
+    {
+        Entity entity;
+        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["DamagedHelmet"]);
+        entity.AddComponent<TransformComponent>(
+            glm::vec3(), 
+            glm::vec3(0.0f, 180.0f, 0.0f), 
+            glm::vec3(0.7f)
+        );
+        entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+        AddEntity(new Entity(std::move(entity)));
+}
+    {
+        Entity entity;
+        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["viking_room"]);
+        entity.AddComponent<TransformComponent>(glm::vec3(), glm::vec3(), glm::vec3(1.0f));
+        entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+        AddEntity(new Entity(std::move(entity)));
+    }
 
     lastTicks = SDL_GetTicks();
     return true;
@@ -151,5 +159,5 @@ void Engine::AddEntity(Entity* entity) {
             }
         }
     }
-    mEntities.push_back(entity);
+    mEntities.push_back(std::move(entity));
 }

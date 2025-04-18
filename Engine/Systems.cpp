@@ -28,30 +28,30 @@ void MoveSystem::Update(float deltaTime) {
 }
 
 bool RenderSystem::Init() {
-    {
-        RenderNode node{};
-        if (mRenderer->mMeshes.find("DamagedHelmet") != mRenderer->mMeshes.end()) {
-            node.mDisplay = new DisplayComponent();
-            node.mDisplay->mMesh = &(mRenderer->mMeshes["DamagedHelmet"]);\
-            node.mTransform = new TransformComponent();
-            node.mTransform->mPosition = {0.0f, 0.0f, 0.0f};
-            node.mTransform->mRotation = {0.0f, 180.0f, 0.0f};
-            node.mTransform->mScale = {0.5f, 0.5f, 0.5f};
-            mRenderNodes.push_back(node);
-        }
-    }
-    {
-        RenderNode node{};
-        if (mRenderer->mMeshes.find("viking_room") != mRenderer->mMeshes.end()) {
-            node.mDisplay = new DisplayComponent();
-            node.mDisplay->mMesh = &(mRenderer->mMeshes["viking_room"]);\
-            node.mTransform = new TransformComponent();
-            node.mTransform->mPosition = {0.0f, 0.0f, 0.0f};
-            node.mTransform->mRotation = {0.0f, 0.0f, 0.0f};
-            node.mTransform->mScale = {1.0f, 1.0f, 1.0f};
-            mRenderNodes.push_back(node);
-        }
-    }
+    // {
+    //     RenderNode node{};
+    //     if (mRenderer->mMeshes.find("DamagedHelmet") != mRenderer->mMeshes.end()) {
+    //         node.mDisplay = new DisplayComponent();
+    //         node.mDisplay->mMesh = &(mRenderer->mMeshes["DamagedHelmet"]);\
+    //         node.mTransform = new TransformComponent();
+    //         node.mTransform->mPosition = {0.0f, 0.0f, 0.0f};
+    //         node.mTransform->mRotation = {0.0f, 180.0f, 0.0f};
+    //         node.mTransform->mScale = {0.5f, 0.5f, 0.5f};
+    //         mRenderNodes.push_back(node);
+    //     }
+    // }
+    // {
+    //     RenderNode node{};
+    //     if (mRenderer->mMeshes.find("viking_room") != mRenderer->mMeshes.end()) {
+    //         node.mDisplay = new DisplayComponent();
+    //         node.mDisplay->mMesh = &(mRenderer->mMeshes["viking_room"]);
+    //         node.mTransform = new TransformComponent();
+    //         node.mTransform->mPosition = {0.0f, 0.0f, 0.0f};
+    //         node.mTransform->mRotation = {0.0f, 0.0f, 0.0f};
+    //         node.mTransform->mScale = {1.0f, 1.0f, 1.0f};
+    //         mRenderNodes.push_back(node);
+    //     }
+    // }
     return true;
 }
 
