@@ -6,19 +6,10 @@ enable_testing()
 set(SOURCES 
     main.cpp
     Game.cpp
-    Player.cpp
-    Scene.cpp
-    Components/BaseComponent.cpp
-    Components/TransformComponent.cpp
 )
 
 set(HEADERS 
     Game.h
-    GameObject.h
-    Player.h
-    Scene.h
-    Components/BaseComponent.h
-    Components/TransformComponent.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})

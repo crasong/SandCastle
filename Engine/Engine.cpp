@@ -1,5 +1,9 @@
 #include "Engine.h"
+
+#include <Entity.h>
 #include <imgui_impl_sdl3.h>
+#include <Nodes.h>
+#include <Systems.h>
 
 static bool s_Running = true;
 static float deltaTime = 0.0f;
@@ -15,12 +19,35 @@ bool Engine::Init() {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Engine: Renderer Init failed!");
         return false;
     }
+    
+    mSystems.resize(ISystem::SystemPriority::count);
+    AddSystem(new RenderSystem(&mRenderer));
+    AddSystem(new MoveSystem());
+
+    // Make sample entity
+    //Entity entity;
+    //DisplayComponent display;
+    //display.mMesh = &mRenderer.mMeshes["DamagedHelmet"];
+    //entity.AddComponent<DisplayComponent>(display);
+    //TransformComponent transform;
+    //transform.mPosition = {1.0f, 2.0f, 3.0f};
+    //entity.AddComponent<TransformComponent>(transform);
+    //VelocityComponent velocity;
+    //entity.AddComponent<VelocityComponent>(velocity);
+    //AddEntity(&entity);
 
     lastTicks = SDL_GetTicks();
     return true;
 }
 
 void Engine::Shutdown() {
+    for (auto& systemList : mSystems) {
+        for (auto& system : systemList) {
+            if (system) {
+                system->Shutdown();
+            }
+        }
+    }
     SDL_Quit();
 }
 
@@ -35,8 +62,7 @@ float Engine::GetDeltaTime() {
 void Engine::Run() {
     PollEvents();
 
-    //mRenderer.Clear();
-    Draw();
+    //Draw();
 }
 
 void Engine::PollEvents() {
@@ -83,6 +109,47 @@ void Engine::PollEvents() {
 }
 
 void Engine::Draw() {
-    mRenderer.Present();
 }
 
+
+bool Engine::AddSystem(ISystem* system) {
+    if (system && system->Init()) {
+        mSystems[system->mPriority].push_back(std::move(system));
+        return true;
+    }
+    return false;
+}
+
+void Engine::Update(float deltaTime) {
+    for (uint8_t priority = 0; priority < ISystem::SystemPriority::count; ++priority) {
+        for (auto& system : mSystems[priority]) {
+            if (system) {
+                system->Update(deltaTime);
+            }
+        }
+    }
+    //mRenderer.Update(deltaTime);
+}
+
+void Engine::RemoveSystem(ISystem* system) {
+    for (auto& systemList : mSystems) {
+        auto it = std::remove(systemList.begin(), systemList.end(), system);
+        if (it != systemList.end()) {
+            (*it)->Shutdown();
+            systemList.erase(it, systemList.end());
+            delete system;
+            break;
+        }
+    }
+}
+
+void Engine::AddEntity(Entity* entity) {
+    for (auto& systemList : mSystems) {
+        for (auto& system : systemList) {
+            if (system) {
+                system->AddNodeForEntity(*entity);
+            }
+        }
+    }
+    mEntities.push_back(entity);
+}

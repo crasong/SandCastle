@@ -231,15 +231,16 @@ void Renderer::InitSamplers() {
 }
 
 void Renderer::InitMeshes() {
-    const size_t modelIdx = 1;
-    const std::string modelname = Models[modelIdx].foldername;
-    Mesh mesh;
-    if (InitMesh(Models[modelIdx], mesh)) {
-        mMeshes[modelname] = mesh;
+    for (auto& model : Models) {
+        Mesh mesh;
+        if (InitMesh(model, mesh)) {
+            mMeshes[model.foldername] = mesh;
+        }
+        else{
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to initialize mesh of filename: %s", model.foldername.c_str());
+        }
     }
-    else{
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to initialize mesh of filename: %s", modelname.c_str());
-    }
+    SDL_LogDebug(SDL_LOG_CATEGORY_CUSTOM, "Loaded %zu meshes", mMeshes.size());
 }
 
 bool Renderer::InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh) {
@@ -569,92 +570,11 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh 
     return true;
 }
 
-bool Renderer::GPURenderPass(SDL_Window* window) {
-    mUIManager.BeginFrame();
-    ImGui::Render();
-    ImDrawData* drawData = ImGui::GetDrawData();
-    const bool bUIMinimized = (drawData->DisplaySize.x <= 0.0f || drawData->DisplaySize.y <= 0.0f);
-
-    SDL_GPUCommandBuffer* commandBuffer(SDL_AcquireGPUCommandBuffer(mSDLDevice));
-    if (!commandBuffer) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
-        return false;
-    }
-
-    SDL_GPUTexture* swapchainTexture;
-    if (!SDL_WaitAndAcquireGPUSwapchainTexture(commandBuffer, window, &swapchainTexture, nullptr, nullptr)) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_WaitAndAcquireGPUSwapchainTexture failed: %s", SDL_GetError());
-        return false;
-    }
-    if (swapchainTexture) {
-        ImGui_ImplSDLGPU3_PrepareDrawData(drawData, commandBuffer);
-
-        SDL_GPUColorTargetInfo colorTarget{};
-        colorTarget.texture = swapchainTexture;
-        colorTarget.store_op = SDL_GPU_STOREOP_STORE;
-        colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
-        colorTarget.clear_color = SDL_FColor{0.3f,0.2f,0.2f,1.0f};
-        std::vector<SDL_GPUColorTargetInfo> colorTargets {colorTarget};
-
-        SDL_GPUDepthStencilTargetInfo depthStencilTarget{};
-        depthStencilTarget.texture = mDepthTexture;
-        depthStencilTarget.clear_depth = 1.0f;
-        depthStencilTarget.load_op = SDL_GPU_LOADOP_CLEAR;
-        depthStencilTarget.store_op = SDL_GPU_STOREOP_STORE;
-        depthStencilTarget.clear_stencil = 0;
-        
-        SDL_GPURenderPass* renderPass{
-            SDL_BeginGPURenderPass(commandBuffer, colorTargets.data(), static_cast<Uint32>(colorTargets.size()), &depthStencilTarget)
-        };
-
-        for (auto& namedMesh : mMeshes) {
-            Mesh& mesh = namedMesh.second;
-
-            SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);
-            std::vector<SDL_GPUBufferBinding> bindings{{mesh.vertexBuffer, 0}};
-            SDL_BindGPUVertexBuffers(renderPass, 0, bindings.data(), static_cast<Uint32>(bindings.size()));
-            SDL_GPUBufferBinding indexBufferBinding{mesh.indexBuffer, 0};
-            SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-            SDL_GPUTextureSamplerBinding textureSamplerBinding{mesh.colorTexture, mSamplers[mCurrentSamplerIndex]};
-            SDL_BindGPUFragmentSamplers(renderPass, 0, &textureSamplerBinding, 1);
-    
-            // projection matrix
-            const float fovY = glm::radians(90.0f/mCachedScreenAspectRatio);
-            glm::mat4 projectionMatrix = glm::perspective(fovY, mCachedScreenAspectRatio, 0.1f, 100.0f);
-            // view matrix
-            glm::mat4 viewMatrix = glm::lookAt(glm::vec3(0, -3, 2), glm::vec3(0, 0, 1), glm::vec3(0, 0, 1));
-            // model matrix
-            glm::mat4 modelMatrix = glm::mat4(1.0f);
-            modelMatrix = glm::scale(modelMatrix, glm::vec3(mScale));
-            modelMatrix = glm::rotate(modelMatrix, SDL_GetTicks() / 1000.0f, glm::vec3(0, 0, 1));
-            modelMatrix = glm::translate(modelMatrix, glm::vec3(0, 0, 0));
-            // modelviewprojection matrix
-            glm::mat4 mvpMatrix = (projectionMatrix * viewMatrix) * modelMatrix;
-            SDL_PushGPUVertexUniformData(commandBuffer, 0, &mvpMatrix, sizeof(glm::mat4));
-    
-            SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mesh.indices.size()), 1, 0, 0, 0);
-        }
-
-        // Draw UI
-        if (!bUIMinimized) {
-            ImGui_ImplSDLGPU3_RenderDrawData(drawData, commandBuffer, renderPass);
-        }
-
-        SDL_EndGPURenderPass(renderPass);
-    }
-
-    if (!SDL_SubmitGPUCommandBuffer(commandBuffer)) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_SubmitGPUCommandBuffer failed: %s", SDL_GetError());
-        return false;
-    }
-    return true;
-}
-
 void Renderer::Clear() {
 }
 
-void Renderer::Present() {
-    GPURenderPass(mWindow);
+void Renderer::Update(float deltaTime) {
+    
 }
 
 void Renderer::Shutdown() {

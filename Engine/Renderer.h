@@ -41,7 +41,7 @@ public:
 
     bool Init(const char* title, int width, int height);
     void Clear();
-    void Present();
+    void Update(float deltaTime);
     void Shutdown();
 
     void Resize();
@@ -84,8 +84,6 @@ private:
         const Uint32 storageTextureCount);
     SDL_Surface* LoadImage(const ModelDescriptor& modelDescriptor, int desiredChannels = 0);
     bool LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh& outMesh);
-
-    bool GPURenderPass(SDL_Window* window);
     
 private:
     UIManager mUIManager;
@@ -103,4 +101,7 @@ private:
     float mScale = 1.0f;
     const float mScaleStep = 0.1f;
     float mCachedScreenAspectRatio = 1.0f;
+
+    friend class Engine;
+    friend class RenderSystem;
 };
