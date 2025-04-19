@@ -617,6 +617,14 @@ void Renderer::Render(UIManager* uiManager) {
         depthStencilTarget.clear_stencil = 0;
         
         mRenderPass = SDL_BeginGPURenderPass(mCommandBuffer, colorTargets.data(), static_cast<Uint32>(colorTargets.size()), &depthStencilTarget);
+        if (!mRenderPass) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_BeginGPURenderPass failed: %s", SDL_GetError());
+            mNodesThisFrame.clear();
+            return;
+        }
+        // Get Camera
+        const CameraComponent* camera = mCameraNodes[0]->mCamera;
+        const TransformComponent* cameraTransform = mCameraNodes[0]->mTransform;
 
         for (auto& node : mNodesThisFrame) {
             const Renderer::Mesh& mesh = *(node->mDisplay->mMesh);
@@ -631,10 +639,20 @@ void Renderer::Render(UIManager* uiManager) {
             SDL_BindGPUFragmentSamplers(mRenderPass, 0, &textureSamplerBinding, 1);
     
             // projection matrix
-            const float fovY = glm::radians(90.0f/mCachedScreenAspectRatio);
-            glm::mat4 projectionMatrix = glm::perspective(fovY, mCachedScreenAspectRatio, 0.1f, 100.0f);
+            glm::mat4 projectionMatrix;
+            if (camera->mProjectionMode == Renderer::ProjectionMode::Perspective) {
+                const float fovY = glm::radians(camera->mFOV/camera->mAspectRatio);
+                projectionMatrix = glm::perspective(fovY, camera->mAspectRatio, camera->mNearPlane, camera->mFarPlane);
+            }
+            else if (camera->mProjectionMode == Renderer::ProjectionMode::Orthographic) {
+                // Orthographic projection
+                float halfWidth = camera->mOrthoSize * camera->mAspectRatio;
+                float halfHeight = camera->mOrthoSize;
+                projectionMatrix = glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, camera->mNearPlane, camera->mFarPlane);
+            }
+            
             // view matrix
-            glm::mat4 viewMatrix = glm::lookAt(glm::vec3(0, -4, 0), glm::vec3(0, 0, 0), glm::vec3(0, 0, 1));
+            glm::mat4 viewMatrix = glm::lookAt(cameraTransform->mPosition, glm::vec3(0, 0, 0), camera->mUp);
             // model matrix
             glm::mat4 modelMatrix = glm::mat4(1.0f);
             modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));
@@ -705,7 +723,21 @@ void Renderer::Resize() {
     mDepthTexture = SDL_CreateGPUTexture(mSDLDevice, &depthTextureCreateInfo);
     SDL_SetGPUTextureName(mSDLDevice, mDepthTexture, "Depth Texture");
 
-    mCachedScreenAspectRatio = static_cast<float>(windowWidth) / static_cast<float>(windowHeight);
+    if (mCameraNodes.size() == 0) return;
+    mCameraNodes[0]->mCamera->mAspectRatio = static_cast<float>(windowWidth) / static_cast<float>(windowHeight);
+}
+
+void Renderer::SetCameraEntity(CameraNode* cameraNode) {
+    if (mCameraNodes.size() > 0)  return;
+
+    mCameraNodes.push_back(cameraNode);
+    
+    int windowWidth, windowHeight;
+    if (!SDL_GetWindowSize(mWindow, &windowWidth, &windowHeight)) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_GetWindowSize failed: %s", SDL_GetError());
+        return;
+    }
+    mCameraNodes[0]->mCamera->mAspectRatio = static_cast<float>(windowWidth) / static_cast<float>(windowHeight);
 }
 
 void Renderer::CycleRenderMode() {

@@ -67,3 +67,18 @@ private:
     UIManager* mUIManager = nullptr;
     std::vector<UINode> mUINodes;
 };
+
+class CameraSystem : public ISystem {
+public:
+    CameraSystem() = default;
+    CameraSystem(Renderer* renderer) : mRenderer(renderer) {}
+    ~CameraSystem() override = default;
+
+    bool Init() override { return true; }
+    void AddNodeForEntity(const Entity& entity) override;
+    void Update(float deltaTime) override;
+    void Shutdown() override {}
+private:
+    Renderer* mRenderer = nullptr;
+    std::vector<CameraNode> mCameraNodes;
+};

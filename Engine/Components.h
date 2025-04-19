@@ -56,6 +56,21 @@ public:
     Renderer::Mesh* mMesh = nullptr;
 };
 
+class CameraComponent : public Component{
+public:
+    CameraComponent() = default;
+    void BeginFrame() override;
+
+    float mFOV = 90.0f; // Field of view in degrees
+    float mOrthoSize = 10.0f; // Orthographic size
+    float mAspectRatio = 16.0f/9.0f; // Aspect ratio
+    float mNearPlane = 0.1f; // Near clipping plane distance
+    float mFarPlane = 100.0f; // Far clipping plane distance
+    glm::vec3 mUp = {0.0f, 0.0f, 1.0f}; // Up vector
+    Renderer::ProjectionMode mProjectionMode = Renderer::ProjectionMode::Perspective;
+    Renderer::ViewPort mViewPort = {{0, 0}, {0, 0}}; // Viewport dimensions
+};
+
 class UIComponent : public Component{
     public:
     UIComponent() = default;

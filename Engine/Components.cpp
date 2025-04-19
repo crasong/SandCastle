@@ -42,6 +42,18 @@ void UIComponent::BeginFrame() {
     //ImGui::EndGroup();
 }
 
+void CameraComponent::BeginFrame() {
+    // Update logic for the camera component can be added here if needed
+    ImGui::Text("Camera Component");
+    // Add camera-specific UI elements here
+    ImGui::InputFloat("Field of View", &mFOV);
+    ImGui::SameLine();
+    ImGui::InputFloat("Near Plane", &mNearPlane);
+    ImGui::SameLine();
+    ImGui::InputFloat("Far Plane", &mFarPlane);
+    // select projection mode
+}
+
 void UIComponent::BeginFrameForViewables() {
     // This function is called to begin the frame for all viewable components
     std::string name;

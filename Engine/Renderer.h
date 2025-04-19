@@ -7,6 +7,7 @@
 #include <vector>
 #include <unordered_map>
 
+class CameraNode;
 class RenderNode;
 class UIManager;
 
@@ -16,6 +17,17 @@ public:
         Fill = 0,
         Line,
         count
+    };
+
+    enum ProjectionMode : Uint8 {
+        Perspective = 0,
+        Orthographic,
+        numModes
+    };
+
+    struct ViewPort {
+        glm::vec2 position = {0, 0};
+        glm::vec2 size = {0, 0};
     };
 
     struct PositionTextureVertex {
@@ -52,6 +64,7 @@ public:
     void IncreaseScale();
     void DecreaseScale();
 
+    void SetCameraEntity(CameraNode* cameraNode);
     void SubmitNode(RenderNode* node) {
         mNodesThisFrame.push_back(node);
     }
@@ -100,6 +113,8 @@ private:
     std::unordered_map<RenderMode, SDL_GPUGraphicsPipeline*> mPipelines;
     std::unordered_map<std::string, Mesh> mMeshes;
 
+    //CameraNode* mCameraNode = nullptr;
+    std::vector<CameraNode*> mCameraNodes;
     std::vector<RenderNode*> mNodesThisFrame;
     SDL_GPUCommandBuffer* mCommandBuffer = nullptr;
     SDL_GPUTexture* mSwapchainTexture = nullptr;
@@ -109,7 +124,6 @@ private:
     RenderMode mRenderMode = RenderMode::Fill;
     float mScale = 1.0f;
     const float mScaleStep = 0.1f;
-    float mCachedScreenAspectRatio = 1.0f;
 
     friend class Engine;
     friend class RenderSystem;

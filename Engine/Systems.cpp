@@ -58,15 +58,27 @@ void UISystem::AddNodeForEntity(const Entity& entity) {
     }
 }
 void UISystem::Update(float deltaTime) {
-    // mUIManager->BeginFrame();
-    // ImGui::Render();
-    // ImDrawData* drawData = ImGui::GetDrawData();
-    // const bool bUIMinimized = (drawData->DisplaySize.x <= 0.0f || drawData->DisplaySize.y <= 0.0f);
-
-    // for (auto& node : mUINodes) {
-    //     node.mUI->BeginFrame();
-    // }
     for (auto& node : mUINodes) {
         mUIManager->SubmitNode(&node);
+    }
+}
+
+void CameraSystem::AddNodeForEntity(const Entity& entity) {
+    CameraComponent* camera = entity.GetComponent<CameraComponent>();
+    TransformComponent* transform = entity.GetComponent<TransformComponent>();
+    if (camera && transform) {
+        CameraNode node;
+        node.mCamera = camera;
+        node.mTransform = transform;
+        mCameraNodes.push_back(node);
+        // if (mRenderer) {
+        //     mRenderer->SetCameraEntity(&mCameraNodes.back());
+        // }
+    }
+}
+
+void CameraSystem::Update(float deltaTime) {
+    if (mRenderer) {
+        mRenderer->SetCameraEntity(&mCameraNodes[0]);
     }
 }

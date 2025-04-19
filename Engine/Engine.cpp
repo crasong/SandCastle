@@ -24,10 +24,23 @@ bool Engine::Init() {
     
     mSystems.resize(ISystem::SystemPriority::count);
     AddSystem(new MoveSystem());
+    AddSystem(new CameraSystem(&mRenderer));
     AddSystem(new RenderSystem(&mRenderer));
     AddSystem(new UISystem(&mUIManager));
 
     // Make sample entity
+    {
+        Entity entity("Camera");
+        entity.AddComponent<CameraComponent>();
+        entity.AddComponent<TransformComponent>(
+            glm::vec3(0.0f, 0.0f, 0.0f), 
+            glm::vec3(0.0f, 180.0f, 0.0f), 
+            glm::vec3(1.0f)
+        );
+        entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+        entity.AddComponent<UIComponent>();
+        AddEntity(new Entity(std::move(entity)));
+    }
     {
         Entity entity("Space Helmet");
         entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["DamagedHelmet"]);

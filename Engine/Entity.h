@@ -56,7 +56,7 @@ public:
     }
 
     template<typename T>
-    bool HasComponent() {
+    bool HasComponent() const {
         std::type_index typeIndex = std::type_index(typeid(T));
         return mComponents.find(typeIndex) != mComponents.end();
     }

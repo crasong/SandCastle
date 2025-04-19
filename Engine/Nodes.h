@@ -26,3 +26,9 @@ class UINode : public Node{
 public:
     UIComponent* mUI = nullptr;
 };
+
+class CameraNode : public Node{
+public:
+    CameraComponent* mCamera = nullptr;
+    TransformComponent* mTransform = nullptr;
+};
