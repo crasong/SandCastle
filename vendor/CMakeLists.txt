@@ -49,4 +49,5 @@ target_include_directories(vendor INTERFACE
 
 target_compile_definitions(vendor INTERFACE
                 GLM_FORCE_DEPTH_ZERO_TO_ONE
+                IMGUI_DEFINE_MATH_OPERATORS
         )

@@ -27,7 +27,7 @@ static std::vector<std::string> SamplerNames =
 };
 static std::vector<Renderer::ModelDescriptor> Models = 
 {
-    {"viking_room", "viking_room.obj", "viking_room.png"},
+    {"viking_room", "viking_room.obj", "viking_room.png", false, false, true},
     {"DamagedHelmet", "DamagedHelmet.gltf", "Default_albedo.jpg"},
 };
 
@@ -535,11 +535,14 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh 
     std::string modelFullPath = std::format("{}/Content/Models/{}/{}", BasePath, modelDescriptor.foldername, modelDescriptor.meshFilename);
     // Load the model
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(modelFullPath, aiProcess_Triangulate | aiProcess_FlipUVs);
+    const aiScene* scene = importer.ReadFile(modelFullPath, aiProcess_Triangulate | aiProcess_MakeLeftHanded | aiProcess_FlipUVs);
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->HasMeshes()) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s \nmodel filepath: %s", importer.GetErrorString(), modelFullPath.c_str());
         return false;
     }
+    float xMod = modelDescriptor.flipX ? -1.0f : 1.0f;
+    float yMod = modelDescriptor.flipY ? -1.0f : 1.0f;
+    float zMod = modelDescriptor.flipZ ? -1.0f : 1.0f;
     for (size_t i = 0; i < scene->mNumMeshes; ++i) {
         auto mesh = scene->mMeshes[i];
         if (mesh->HasPositions()) {
@@ -549,9 +552,9 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh 
                 auto uv = mesh->mTextureCoords[0][j];
                 outMesh.vertices.push_back({ 
                     .position = {
-                        vertex.x, 
-                        vertex.y, 
-                        vertex.z
+                        vertex.x * xMod,
+                        vertex.y * yMod,
+                        vertex.z * zMod
                     }, 
                     .uv = {
                         uv.x, 

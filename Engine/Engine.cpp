@@ -44,11 +44,7 @@ bool Engine::Init() {
     {
         Entity entity("Space Helmet");
         entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["DamagedHelmet"]);
-        entity.AddComponent<TransformComponent>(
-            glm::vec3(), 
-            glm::vec3(0.0f, 180.0f, 0.0f), 
-            glm::vec3(0.7f)
-        );
+        entity.AddComponent<TransformComponent>(glm::vec3(), glm::vec3(), glm::vec3(0.7f));
         entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
         entity.AddComponent<UIComponent>();
         AddEntity(new Entity(std::move(entity)));

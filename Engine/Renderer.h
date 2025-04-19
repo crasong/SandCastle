@@ -36,6 +36,9 @@ public:
     };
 
     struct Mesh {
+        glm::vec3 mRootPosition = {0.0f, 0.0f, 0.0f}; // Base position in local space
+        glm::vec3 mRootOrientation = {0.0f, 0.0f, 0.0f}; // Base orientation in degrees
+        glm::vec3 mRootScale = {1.0f, 1.0f, 1.0f};
         std::vector<PositionTextureVertex> vertices;
         std::vector<Uint32> indices;
         SDL_GPUBuffer* vertexBuffer = nullptr;
@@ -47,6 +50,9 @@ public:
         std::string foldername;
         std::string meshFilename;
         std::string textureFilename;
+        bool flipX = false;
+        bool flipY = false;
+        bool flipZ = false;
     };
 
 public:
