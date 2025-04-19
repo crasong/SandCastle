@@ -20,9 +20,9 @@ void VelocityComponent::BeginFrame() {
 void DisplayComponent::BeginFrame() {
     // Display the mesh information in the imgui UI
     if (mMesh) {
-        ImGui::Text("Display Component");
-        ImGui::Text("Vertices: %i", mMesh->vertices.size());
-        ImGui::Text("Indices: %i", mMesh->indices.size());
+        ImGui::Text("Mesh Information");
+        ImGui::Text("\tVertices: %i", mMesh->vertices.size());
+        ImGui::Text("\tIndices: %i", mMesh->indices.size());
     }
 }
 
@@ -32,25 +32,31 @@ void UIComponent::BeginFrame() {
     if (mEntity) {
         mEntity->GetComponents(uiViewables); // Call the function to get viewables
     }
-    ImGui::BeginGroup();
-    ImGui::Text("UI Component");
+    //ImGui::BeginGroup();
+    //ImGui::Text("UI Component");
     // for (auto& ui : uiViewables) {
     //     if (ui) {
     //         ImGui::Text("UI Component");
     //     }
     // }
-    ImGui::EndGroup();
+    //ImGui::EndGroup();
 }
 
 void UIComponent::BeginFrameForViewables() {
     // This function is called to begin the frame for all viewable components
+    std::string name;
     std::vector<IUIViewable*> uiViewables;
     if (mEntity) {
+        name = mEntity->GetName();
         mEntity->GetComponents(uiViewables, true); // Call the function to get viewables
     }
+	ImGui::Begin(name.c_str(), NULL, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize);
     for (auto& ui : uiViewables) {
         if (ui) {
+            ImGui::PushID(ui);
             ui->BeginFrame();
+            ImGui::PopID();
         }
     }
+    ImGui::End();
 }

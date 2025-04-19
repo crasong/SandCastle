@@ -29,7 +29,7 @@ bool Engine::Init() {
 
     // Make sample entity
     {
-        Entity entity;
+        Entity entity("Space Helmet");
         entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["DamagedHelmet"]);
         entity.AddComponent<TransformComponent>(
             glm::vec3(), 
@@ -41,7 +41,7 @@ bool Engine::Init() {
         AddEntity(new Entity(std::move(entity)));
 }
     {
-        Entity entity;
+        Entity entity("Viking Room");
         entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["viking_room"]);
         entity.AddComponent<TransformComponent>(glm::vec3(), glm::vec3(), glm::vec3(1.0f));
         entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());

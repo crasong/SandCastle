@@ -68,6 +68,10 @@ public:
             }
         }
     }
+
+    const char* GetName() const {
+        return mName.c_str();
+    }
 protected:
     uint32_t mID = 0; // Unique ID for the entity
     std::string mName = ""; // Name of the entity

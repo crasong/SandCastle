@@ -44,7 +44,12 @@ void UIManager::BeginFrame() {
 
     DockSpaceUI();
     ToolbarUI();
+
+    if (show_demo_window) {
+        ImGui::ShowDemoWindow(&show_demo_window);
+    }
     
+    // Draw Nodes
     for (auto& node : mNodesThisFrame) {
         node->mUI->BeginFrameForViewables();
     }
@@ -140,6 +145,8 @@ void UIManager::ToolbarUI()
 	ImGui::PopStyleVar();
   
 	ImGui::Button("Toolbar goes here", ImVec2(0, 37));
+    ImGui::SameLine();
+    ImGui::Checkbox("Demo Window", &show_demo_window);
   
 	ImGui::End();
 }
