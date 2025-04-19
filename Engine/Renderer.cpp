@@ -652,7 +652,16 @@ void Renderer::Render(UIManager* uiManager) {
             }
             
             // view matrix
-            glm::mat4 viewMatrix = glm::lookAt(cameraTransform->mPosition, glm::vec3(0, 0, 0), camera->mUp);
+            glm::mat4 viewMatrix = glm::mat4(1.0f);
+            if (camera->mCameraMode == CameraComponent::CameraMode::FirstPerson) {
+                viewMatrix = glm::rotate(viewMatrix, glm::radians(cameraTransform->mRotation.x), glm::vec3(1, 0, 0));
+                viewMatrix = glm::rotate(viewMatrix, glm::radians(cameraTransform->mRotation.y), glm::vec3(0, 1, 0));
+                viewMatrix = glm::rotate(viewMatrix, glm::radians(cameraTransform->mRotation.z), glm::vec3(0, 0, 1));
+                viewMatrix = glm::translate(viewMatrix, cameraTransform->mPosition);
+            }
+            else if (camera->mCameraMode == CameraComponent::CameraMode::ThirdPerson) {
+                viewMatrix = glm::lookAt(cameraTransform->mPosition, camera->mLookAt, camera->mUp);
+            }
             // model matrix
             glm::mat4 modelMatrix = glm::mat4(1.0f);
             modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));

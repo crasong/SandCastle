@@ -33,8 +33,8 @@ bool Engine::Init() {
         Entity entity("Camera");
         entity.AddComponent<CameraComponent>();
         entity.AddComponent<TransformComponent>(
+            glm::vec3(3.0f, 3.0f, 3.0f), 
             glm::vec3(0.0f, 0.0f, 0.0f), 
-            glm::vec3(0.0f, 180.0f, 0.0f), 
             glm::vec3(1.0f)
         );
         entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
@@ -161,7 +161,6 @@ void Engine::Update(float deltaTime) {
             }
         }
     }
-    //mRenderer.Update(deltaTime);
 }
 
 void Engine::RemoveSystem(ISystem* system) {

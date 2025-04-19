@@ -61,12 +61,21 @@ public:
     CameraComponent() = default;
     void BeginFrame() override;
 
+    enum CameraMode : Uint8 {
+        FirstPerson = 0,
+        ThirdPerson,
+        FreeCamera,
+        count
+    };
+
     float mFOV = 90.0f; // Field of view in degrees
     float mOrthoSize = 10.0f; // Orthographic size
     float mAspectRatio = 16.0f/9.0f; // Aspect ratio
     float mNearPlane = 0.1f; // Near clipping plane distance
     float mFarPlane = 100.0f; // Far clipping plane distance
     glm::vec3 mUp = {0.0f, 0.0f, 1.0f}; // Up vector
+    glm::vec3 mLookAt = {0.0f, 0.0f, 0.0f}; // Look-at point
+    CameraMode mCameraMode = ThirdPerson; // Camera mode
     Renderer::ProjectionMode mProjectionMode = Renderer::ProjectionMode::Perspective;
     Renderer::ViewPort mViewPort = {{0, 0}, {0, 0}}; // Viewport dimensions
 };
