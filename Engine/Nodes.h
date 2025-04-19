@@ -21,3 +21,8 @@ public:
     TransformComponent* mTransform = nullptr;
     DisplayComponent* mDisplay = nullptr;
 };
+
+class UINode : public Node{
+public:
+    UIComponent* mUI = nullptr;
+};

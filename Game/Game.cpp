@@ -9,6 +9,8 @@ void Game::Run() {
 
             float dt = mEngine->GetDeltaTime();
             Update(dt);
+
+            mEngine->Draw();
         }
     }
     mEngine->Shutdown();

@@ -5,8 +5,10 @@
 #include <SDL3/SDL_gpu.h>
 #include <string>
 #include <vector>
-#include <UIManager.h>
 #include <unordered_map>
+
+class RenderNode;
+class UIManager;
 
 class Renderer {
 public:
@@ -41,7 +43,7 @@ public:
 
     bool Init(const char* title, int width, int height);
     void Clear();
-    void Update(float deltaTime);
+    void Render(UIManager* uiManager);
     void Shutdown();
 
     void Resize();
@@ -49,6 +51,10 @@ public:
     void CycleSampler();
     void IncreaseScale();
     void DecreaseScale();
+
+    void SubmitNode(RenderNode* node) {
+        mNodesThisFrame.push_back(node);
+    }
 
 private:
     void InitAssetLoader();
@@ -86,8 +92,6 @@ private:
     bool LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh& outMesh);
     
 private:
-    UIManager mUIManager;
-    
     SDL_Window* mWindow = nullptr;
     SDL_GPUDevice* mSDLDevice = nullptr;
     SDL_GPUTexture* mDepthTexture = nullptr;
@@ -95,6 +99,11 @@ private:
     std::vector<SDL_GPUSampler*> mSamplers;
     std::unordered_map<RenderMode, SDL_GPUGraphicsPipeline*> mPipelines;
     std::unordered_map<std::string, Mesh> mMeshes;
+
+    std::vector<RenderNode*> mNodesThisFrame;
+    SDL_GPUCommandBuffer* mCommandBuffer = nullptr;
+    SDL_GPUTexture* mSwapchainTexture = nullptr;
+    SDL_GPURenderPass* mRenderPass = nullptr;
 
     Uint8 mCurrentSamplerIndex = 0;
     RenderMode mRenderMode = RenderMode::Fill;

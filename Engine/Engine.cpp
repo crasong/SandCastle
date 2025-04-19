@@ -19,10 +19,13 @@ bool Engine::Init() {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Engine: Renderer Init failed!");
         return false;
     }
+
+    mUIManager.Init(mRenderer.mWindow, mRenderer.mSDLDevice);
     
     mSystems.resize(ISystem::SystemPriority::count);
-    AddSystem(new RenderSystem(&mRenderer));
     AddSystem(new MoveSystem());
+    AddSystem(new RenderSystem(&mRenderer));
+    AddSystem(new UISystem(&mUIManager));
 
     // Make sample entity
     {
@@ -34,6 +37,7 @@ bool Engine::Init() {
             glm::vec3(0.7f)
         );
         entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+        entity.AddComponent<UIComponent>();
         AddEntity(new Entity(std::move(entity)));
 }
     {
@@ -41,6 +45,7 @@ bool Engine::Init() {
         entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["viking_room"]);
         entity.AddComponent<TransformComponent>(glm::vec3(), glm::vec3(), glm::vec3(1.0f));
         entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+        entity.AddComponent<UIComponent>();
         AddEntity(new Entity(std::move(entity)));
     }
 
@@ -122,6 +127,8 @@ void Engine::PollEvents() {
 }
 
 void Engine::Draw() {
+    // Render Passes handled by manager classes
+    mRenderer.Render(&mUIManager);
 }
 
 
@@ -165,4 +172,5 @@ void Engine::AddEntity(Entity* entity) {
         }
     }
     mEntities.push_back(std::move(entity));
+    mEntities.back()->PostRegistration();
 }

@@ -5,6 +5,7 @@
 #include <Renderer.h>
 #include <typeindex>
 #include <typeinfo>
+#include <UIManager.h>
 #include <unordered_map>
 #include <vector>
 
@@ -20,6 +21,7 @@ public:
 
     void Run();
     void Update(float deltaTime);
+    void Draw();
 
     // SystemManager
     bool AddSystem(ISystem* system);
@@ -29,10 +31,10 @@ public:
 
 private:
     void PollEvents();
-    void Draw();
 
 private:
     Renderer mRenderer;
+    UIManager mUIManager;
     std::vector<std::vector<ISystem*>> mSystems;
     std::vector<Entity*> mEntities;
 };

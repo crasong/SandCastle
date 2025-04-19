@@ -8,9 +8,11 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_sdlgpu3.h>
+#include <Nodes.h>
 #include <SDL3/SDL_vulkan.h>
 #include <SDL3_image/SDL_image.h>
 #include <span>
+#include <UIManager.h>
 
 // statics
 static std::string BasePath;
@@ -57,6 +59,7 @@ bool Renderer::Init(const char* title, int width, int height) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_ClaimWindowForGPUDevice failed: %s", SDL_GetError());
         return false;
     }
+    SDL_SetGPUSwapchainParameters(mSDLDevice, mWindow, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, SDL_GPU_PRESENTMODE_MAILBOX);
 
     if (!InitPipelines()) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to initialize GPU Pipelines");
@@ -65,8 +68,6 @@ bool Renderer::Init(const char* title, int width, int height) {
 
     InitSamplers();
     InitMeshes();
-
-    mUIManager.Init(mWindow, mSDLDevice);
 
     SDL_ShowWindow(mWindow);
 
@@ -573,8 +574,97 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh 
 void Renderer::Clear() {
 }
 
-void Renderer::Update(float deltaTime) {
+// This is ugly. I'm passing the UIManager in because 
+// I haven't figured out how to do multiple render passes.
+void Renderer::Render(UIManager* uiManager) {
+    uiManager->BeginFrame();
+    ImGui::Render();
+    ImDrawData* drawData = ImGui::GetDrawData();
+    const bool bUIMinimized = (drawData->DisplaySize.x <= 0.0f || drawData->DisplaySize.y <= 0.0f);
+
+    mCommandBuffer = SDL_AcquireGPUCommandBuffer(mSDLDevice);
+    if (!mCommandBuffer) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
+        mNodesThisFrame.clear();
+        return;
+    }
+
+    if (!SDL_WaitAndAcquireGPUSwapchainTexture(mCommandBuffer, mWindow, &mSwapchainTexture, nullptr, nullptr)) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_WaitAndAcquireGPUSwapchainTexture failed: %s", SDL_GetError());
+        mNodesThisFrame.clear();
+        return;
+    }
+    if (mSwapchainTexture) {
+        if (!bUIMinimized) {
+            // This is mandatory: call ImGui_ImplSDLGPU3_PrepareDrawData() to upload the vertex/index buffer!
+            ImGui_ImplSDLGPU3_PrepareDrawData(drawData, mCommandBuffer);
+        }
+
+        SDL_GPUColorTargetInfo colorTarget{};
+        colorTarget.texture = mSwapchainTexture;
+        colorTarget.store_op = SDL_GPU_STOREOP_STORE;
+        colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
+        colorTarget.layer_or_depth_plane = 0;
+        colorTarget.clear_color = SDL_FColor{0.3f,0.2f,0.2f,1.0f};
+        std::vector<SDL_GPUColorTargetInfo> colorTargets {colorTarget};
+        SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+
+        SDL_GPUDepthStencilTargetInfo depthStencilTarget{};
+        depthStencilTarget.texture = mDepthTexture;
+        depthStencilTarget.clear_depth = 1.0f;
+        depthStencilTarget.load_op = SDL_GPU_LOADOP_CLEAR;
+        depthStencilTarget.store_op = SDL_GPU_STOREOP_STORE;
+        depthStencilTarget.clear_stencil = 0;
+        
+        mRenderPass = SDL_BeginGPURenderPass(mCommandBuffer, colorTargets.data(), static_cast<Uint32>(colorTargets.size()), &depthStencilTarget);
+
+        for (auto& node : mNodesThisFrame) {
+            const Renderer::Mesh& mesh = *(node->mDisplay->mMesh);
+            const TransformComponent& transform = *(node->mTransform);
+
+            SDL_BindGPUGraphicsPipeline(mRenderPass, mPipelines[mRenderMode]);
+            std::vector<SDL_GPUBufferBinding> bindings{{mesh.vertexBuffer, 0}};
+            SDL_BindGPUVertexBuffers(mRenderPass, 0, bindings.data(), static_cast<Uint32>(bindings.size()));
+            SDL_GPUBufferBinding indexBufferBinding{mesh.indexBuffer, 0};
+            SDL_BindGPUIndexBuffer(mRenderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+            SDL_GPUTextureSamplerBinding textureSamplerBinding{mesh.colorTexture, mSamplers[mCurrentSamplerIndex]};
+            SDL_BindGPUFragmentSamplers(mRenderPass, 0, &textureSamplerBinding, 1);
     
+            // projection matrix
+            const float fovY = glm::radians(90.0f/mCachedScreenAspectRatio);
+            glm::mat4 projectionMatrix = glm::perspective(fovY, mCachedScreenAspectRatio, 0.1f, 100.0f);
+            // view matrix
+            glm::mat4 viewMatrix = glm::lookAt(glm::vec3(0, -4, 0), glm::vec3(0, 0, 0), glm::vec3(0, 0, 1));
+            // model matrix
+            glm::mat4 modelMatrix = glm::mat4(1.0f);
+            modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));
+            modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.x), glm::vec3(1, 0, 0));
+            modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.y), glm::vec3(0, 1, 0));
+            modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.z), glm::vec3(0, 0, 1));
+            //modelMatrix = glm::rotate(modelMatrix, SDL_GetTicks() / 1000.0f, glm::vec3(0, 0, 1));
+            modelMatrix = glm::translate(modelMatrix, transform.mPosition);
+            // modelviewprojection matrix
+            glm::mat4 mvpMatrix = (projectionMatrix * viewMatrix) * modelMatrix;
+            SDL_PushGPUVertexUniformData(mCommandBuffer, 0, &mvpMatrix, sizeof(glm::mat4));
+    
+            SDL_DrawGPUIndexedPrimitives(mRenderPass, static_cast<Uint32>(mesh.indices.size()), 1, 0, 0, 0);
+        }
+        // Draw UI
+        if (!bUIMinimized) {
+            ImGui_ImplSDLGPU3_RenderDrawData(drawData, mCommandBuffer, mRenderPass);
+        }
+
+
+        SDL_EndGPURenderPass(mRenderPass);
+    }
+    
+    mNodesThisFrame.clear();
+
+    if (!SDL_SubmitGPUCommandBuffer(mCommandBuffer)) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_SubmitGPUCommandBuffer failed: %s", SDL_GetError());
+    }
+    mCommandBuffer = nullptr;
+    mSwapchainTexture = nullptr;
 }
 
 void Renderer::Shutdown() {

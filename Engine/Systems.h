@@ -1,11 +1,11 @@
 #pragma once
 
-#include <Components.h>
 #include <Nodes.h>
 #include <vector>
 
 class Entity;
 class Renderer;
+class UIManager;
 
 class ISystem {
 public:
@@ -20,7 +20,7 @@ public:
     virtual void AddNodeForEntity(const Entity& entity) = 0;
     virtual void Update(float deltaTime) = 0;
     virtual void Shutdown() = 0;
-private:
+protected:
     friend class Engine;
     SystemPriority mPriority = SystemPriority::Medium;
 };
@@ -51,4 +51,19 @@ public:
 private:
     Renderer* mRenderer = nullptr;
     std::vector<RenderNode> mRenderNodes;
+};
+
+class UISystem : public ISystem {
+public:
+    UISystem() = default;
+    UISystem(UIManager* uiManager) : mUIManager(uiManager) {}
+    ~UISystem() override = default;
+
+    bool Init() override { return true; }
+    void AddNodeForEntity(const Entity& entity) override;
+    void Update(float deltaTime) override;
+    void Shutdown() override {}
+private:
+    UIManager* mUIManager = nullptr;
+    std::vector<UINode> mUINodes;
 };
