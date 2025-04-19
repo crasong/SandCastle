@@ -46,11 +46,39 @@ void CameraComponent::BeginFrame() {
     // Update logic for the camera component can be added here if needed
     ImGui::Text("Camera Component");
     // Add camera-specific UI elements here
-    ImGui::InputFloat("Field of View", &mFOV);
-    ImGui::SameLine();
     ImGui::InputFloat("Near Plane", &mNearPlane);
     ImGui::SameLine();
     ImGui::InputFloat("Far Plane", &mFarPlane);
+    if (ImGui::Button("Perspective")) {
+        mProjectionMode = Renderer::ProjectionMode::Perspective;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Orthographic")) {
+        mProjectionMode = Renderer::ProjectionMode::Orthographic;
+    }
+    ImGui::SameLine();
+    ImGui::Text("Projection Mode: %s", mProjectionMode == Renderer::ProjectionMode::Perspective ? "Perspective" : "Orthographic");
+    if (mProjectionMode == Renderer::ProjectionMode::Perspective) {
+        ImGui::InputFloat("Field of View", &mFOV);
+    }
+    else if (mProjectionMode == Renderer::ProjectionMode::Orthographic) {
+        ImGui::InputFloat("Ortho Size", &mOrthoSize);
+    }
+
+    if (ImGui::Button("First Person")) {
+        mCameraMode = CameraComponent::CameraMode::FirstPerson;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Third Person")) {
+        mCameraMode = CameraComponent::CameraMode::ThirdPerson;
+    }
+    ImGui::SameLine();
+    ImGui::Text("Camera Mode is %s", mCameraMode == CameraComponent::CameraMode::FirstPerson ? "First Person" : "Third Person");
+    if (mCameraMode == CameraComponent::CameraMode::ThirdPerson) {
+        ImGui::InputFloat3("Look At", &mLookAt.x);
+        ImGui::SameLine();
+        ImGui::InputFloat3("Up Vector", &mUp.x);
+    }
     // select projection mode
 }
 
