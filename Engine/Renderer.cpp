@@ -625,6 +625,7 @@ void Renderer::Render(UIManager* uiManager) {
             mNodesThisFrame.clear();
             return;
         }
+        
         // Get Camera
         const CameraComponent* camera = mCameraNodes[0]->mCamera;
         const TransformComponent* cameraTransform = mCameraNodes[0]->mTransform;
@@ -778,5 +779,30 @@ void Renderer::DecreaseScale() {
     mScale -= mScaleStep;
     if (mScale < 0.2f) {
         mScale = 0.2f;
+    }
+}
+
+void Renderer::ProcessCameraInput(const InputState& inputState, const float deltaTime) {
+    if (mCameraNodes.size() == 0) return;
+    CameraNode* cameraNode = mCameraNodes[0];
+    CameraComponent* camera = cameraNode->mCamera;
+    TransformComponent* transform = cameraNode->mTransform;
+
+    if (inputState.altKeyDown) {
+        if (inputState.mouseButtonDown[SDL_BUTTON_LEFT]) {
+            if (inputState.mouseDragging) {
+                glm::vec2 mouseDelta = inputState.mouseDelta * deltaTime;
+                transform->mRotation.x += mouseDelta.y;
+                transform->mRotation.z += mouseDelta.x;
+            }
+        }
+        else if (inputState.mouseButtonDown[SDL_BUTTON_RIGHT]) {
+            glm::vec2 mouseDelta = inputState.mouseDelta * deltaTime * 0.1f;
+            transform->mPosition.x -= mouseDelta.x;
+            transform->mPosition.y += mouseDelta.y;
+        }
+        mScale += inputState.mouseScroll.y * mScaleStep * deltaTime;
+        if (mScale < 0.2f) mScale = 0.2f;
+        if (mScale > 5.0f) mScale = 5.0f;
     }
 }

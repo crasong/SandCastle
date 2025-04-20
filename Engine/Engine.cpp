@@ -101,24 +101,24 @@ void Engine::PollEvents() {
                 s_Running = false;
                 break;
             case SDL_EVENT_KEY_DOWN:
-                {
-                    SDL_Keycode key = event.key.key;
-                    if (key == SDLK_ESCAPE) {
-                        s_Running = false;
-                    }
-                    if (key == SDLK_LEFT) {
-                        mRenderer.CycleRenderMode();
-                    }
-                    if (key == SDLK_RIGHT) {
-                        mRenderer.CycleSampler();
-                    }
-                    if (key == SDLK_UP) {
-                        mRenderer.IncreaseScale();
-                    }
-                    if (key == SDLK_DOWN) {
-                        mRenderer.DecreaseScale();
-                    }
-                }
+            case SDL_EVENT_KEY_UP:
+                ProcessEvent(event.key);
+                break;
+            case SDL_EVENT_MOUSE_MOTION:
+                ProcessEvent(event.motion);
+                break;
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+                ProcessEvent(event.button);
+                break;
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+                mInputState.mouseButtonDown[event.button.button] = false;
+                mInputState.mouseDragging = false;
+                break;
+            case SDL_EVENT_MOUSE_WHEEL:
+                mInputState.mouseScroll.x = event.wheel.x;
+                mInputState.mouseScroll.y = event.wheel.y;
+                mInputState.mousePosition.x = event.wheel.mouse_x;
+                mInputState.mousePosition.y = event.wheel.mouse_y;
                 break;
             case SDL_EVENT_WINDOW_RESIZED:
             case SDL_EVENT_WINDOW_EXPOSED:
@@ -150,6 +150,10 @@ bool Engine::AddSystem(ISystem* system) {
 }
 
 void Engine::Update(float deltaTime) {
+    mRenderer.ProcessCameraInput(mInputState, deltaTime);
+    mInputState.mouseScroll = { 0.0f, 0.0f };
+    mInputState.mouseDelta = { 0.0f, 0.0f };
+
     for (uint8_t priority = 0; priority < ISystem::SystemPriority::count; ++priority) {
         for (auto& system : mSystems[priority]) {
             if (system) {
@@ -181,4 +185,49 @@ void Engine::AddEntity(Entity* entity) {
     }
     mEntities.push_back(std::move(entity));
     mEntities.back()->PostRegistration();
+}
+
+void Engine::ProcessEvent(const SDL_KeyboardEvent& event) {
+    // Handle keyboard events here
+    SDL_Keycode key = event.key;
+    mInputState.keyDown[key] = event.down;
+    switch(key) {
+        case SDLK_ESCAPE:
+            s_Running = false;
+            break;
+        case SDLK_LALT:
+            mInputState.altKeyDown = event.down;
+            break;
+        case SDLK_1:
+            if (event.down) {
+                mRenderer.CycleRenderMode();
+            }
+            break;
+        case SDLK_2:
+            if (event.down) {
+                mRenderer.CycleSampler();
+            }
+            break;
+        case SDLK_UP:
+            //mRenderer.IncreaseScale();
+            break;
+        case SDLK_DOWN:
+            //mRenderer.DecreaseScale();
+            break;
+    }
+}
+void Engine::ProcessEvent(const SDL_MouseMotionEvent& event) {
+    // Handle mouse motion events here
+    mInputState.mouseDelta.x = event.x - mInputState.mousePosition.x;
+    mInputState.mouseDelta.y = event.y - mInputState.mousePosition.y;
+    mInputState.mousePosition.x = event.x;
+    mInputState.mousePosition.y = event.y;
+}
+void Engine::ProcessEvent(const SDL_MouseButtonEvent& event) {
+    // Handle mouse button events here
+    mInputState.mouseButtonDown[event.button] = event.down;
+    mInputState.mouseDragging = event.down && (event.button == SDL_BUTTON_LEFT);
+}
+void Engine::ProcessEvent(const SDL_WindowEvent& event) {
+    // Handle window events here
 }

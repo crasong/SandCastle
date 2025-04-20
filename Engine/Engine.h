@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Input.h>
 #include <Interfaces.h>
 #include <memory>
 #include <Renderer.h>
@@ -31,10 +32,16 @@ public:
 
 private:
     void PollEvents();
-
+    void ProcessEvent(const SDL_KeyboardEvent& event);
+    void ProcessEvent(const SDL_MouseMotionEvent& event);
+    void ProcessEvent(const SDL_MouseButtonEvent& event);
+    void ProcessEvent(const SDL_WindowEvent& event);
+    
 private:
     Renderer mRenderer;
     UIManager mUIManager;
     std::vector<std::vector<ISystem*>> mSystems;
     std::vector<Entity*> mEntities;
+
+    InputState mInputState;
 };

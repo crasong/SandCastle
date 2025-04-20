@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <Input.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gpu.h>
 #include <string>
@@ -69,6 +70,7 @@ public:
     void CycleSampler();
     void IncreaseScale();
     void DecreaseScale();
+    void ProcessCameraInput(const InputState& inputState, const float deltaTime);
 
     void SetCameraEntity(CameraNode* cameraNode);
     void SubmitNode(RenderNode* node) {
@@ -130,6 +132,8 @@ private:
     RenderMode mRenderMode = RenderMode::Fill;
     float mScale = 1.0f;
     const float mScaleStep = 0.1f;
+    const float mCameraSpeed = 5.0f;
+    const float mCameraRotationSpeed = 0.5f;
 
     friend class Engine;
     friend class RenderSystem;
