@@ -9,6 +9,7 @@
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_sdlgpu3.h>
 #include <Nodes.h>
+#include <Render/RenderStructs.h>
 #include <SDL3/SDL_vulkan.h>
 #include <SDL3_image/SDL_image.h>
 #include <span>
@@ -27,8 +28,18 @@ static std::vector<std::string> SamplerNames =
 };
 static std::vector<Renderer::ModelDescriptor> Models = 
 {
-    {"viking_room", "viking_room.obj", "viking_room.png", false, false, true},
-    {"DamagedHelmet", "DamagedHelmet.gltf", "Default_albedo.jpg"},
+    {"viking_room", "viking_room.obj", "viking_room.png", 0, false, false, false},
+    {"DamagedHelmet", "DamagedHelmet.gltf", "Default_albedo.jpg", 1, false, false, false},
+};
+static std::vector<Renderer::PositionTextureVertex> s_GridVertices = {
+    {{-0.5f, 0.0f, -0.5f}, {0.0f, 0.0f}},
+    {{0.5f, 0.0f, -0.5f}, {1.0f, 0.0f}},
+    {{-0.5f, 0.0f, 0.5f}, {0.0f, 1.0f}},
+    {{0.5f, 0.0f, 0.5f}, {1.0f, 1.0f}},
+};
+static std::vector<Uint32> s_GridIndices = {
+    0, 1, 2,
+    1, 2, 3,
 };
 
 Renderer::Renderer() {}
@@ -91,8 +102,31 @@ bool Renderer::InitPipelines() {
         return false;
     }
 
+    SDL_GPUShader* gridVertShader = LoadShader(mSDLDevice, "Grid.vert", 0, 2, 0, 0);
+    if (!gridVertShader) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Grid Vertex Shader failed to load");
+        return false;
+    }
+    SDL_GPUShader* gridFragShader = LoadShader(mSDLDevice, "Grid.frag", 0, 1, 0, 0);
+    if (!gridFragShader) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Grid Fragment Shader failed to load");
+        return false;
+    }
+
+    SDL_GPUColorTargetBlendState colorBlendState{};
+    colorBlendState.color_write_mask = SDL_GPU_COLORCOMPONENT_R | SDL_GPU_COLORCOMPONENT_G | SDL_GPU_COLORCOMPONENT_B | SDL_GPU_COLORCOMPONENT_A;
+    colorBlendState.enable_blend = false;
+    colorBlendState.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+    colorBlendState.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    colorBlendState.color_blend_op = SDL_GPU_BLENDOP_ADD;
+    colorBlendState.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    colorBlendState.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+    colorBlendState.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
     SDL_GPUColorTargetDescription colorTargetDescription{};
     colorTargetDescription.format = SDL_GetGPUSwapchainTextureFormat(mSDLDevice, mWindow);
+    SDL_GPUColorTargetDescription colorTargetDescription2{};
+    colorTargetDescription2.format = colorTargetDescription.format;
+    colorTargetDescription2.blend_state = colorBlendState;
     std::vector colorTargetDescriptions{colorTargetDescription};
     SDL_GPUGraphicsPipelineTargetInfo pipelineTargetInfo{};
     pipelineTargetInfo.color_target_descriptions = colorTargetDescriptions.data();
@@ -157,8 +191,20 @@ bool Renderer::InitPipelines() {
         return false;
     }
 
+    // create grid pipeline
+    // pipelineCreateInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+    // pipelineCreateInfo.vertex_shader = gridVertShader;
+    // pipelineCreateInfo.fragment_shader = gridFragShader;
+    // mGridPipeline = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &pipelineCreateInfo);
+    // if (!mGridPipeline) {
+    //     SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Grid' graphics pipeline");
+    //     return false;
+    // }
+
     SDL_ReleaseGPUShader(mSDLDevice, vertexShader);
     SDL_ReleaseGPUShader(mSDLDevice, fragmentShader);
+    SDL_ReleaseGPUShader(mSDLDevice, gridVertShader);
+    SDL_ReleaseGPUShader(mSDLDevice, gridFragShader);
 
     return true;
 }
@@ -231,7 +277,75 @@ void Renderer::InitSamplers() {
     mSamplers.emplace_back(SDL_CreateGPUSampler(mSDLDevice, &anisotropicWrapSamplerCreateInfo));
 }
 
+void Renderer::InitGrid() {
+    // copy to mGridMesh
+    mGridMesh.vertices = s_GridVertices;
+    mGridMesh.indices = s_GridIndices;
+
+    // Create GPU resources
+    SDL_GPUBufferCreateInfo vertexBufferCreateInfo{};
+    SDL_GPUTransferBuffer* vertexTransferBuffer = nullptr;
+    SDL_GPUBufferCreateInfo indexBufferCreateInfo{};
+    SDL_GPUTransferBuffer* indexTransferBuffer = nullptr;
+    vertexBufferCreateInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+    vertexBufferCreateInfo.size = static_cast<Uint32>(mGridMesh.vertices.size() * sizeof(PositionTextureVertex));
+    mGridMesh.vertexBuffer = SDL_CreateGPUBuffer(mSDLDevice, &vertexBufferCreateInfo);
+    if (!mGridMesh.vertexBuffer) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Vertex' buffer");
+        return;
+    }
+    SDL_SetGPUBufferName(mSDLDevice, mGridMesh.vertexBuffer, "Vertex Buffer");
+
+    indexBufferCreateInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
+    indexBufferCreateInfo.size = static_cast<Uint32>(mGridMesh.indices.size() * sizeof(Uint32));
+    mGridMesh.indexBuffer =  SDL_CreateGPUBuffer(mSDLDevice, &indexBufferCreateInfo);
+    if (!mGridMesh.indexBuffer) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Index' buffer");
+        return;
+    }
+    SDL_SetGPUBufferName(mSDLDevice, mGridMesh.indexBuffer, "Index Buffer");
+
+    SDL_GPUTransferBufferCreateInfo vertexTransferBufferCreateInfo{};
+    vertexTransferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    vertexTransferBufferCreateInfo.size = vertexBufferCreateInfo.size;
+    
+    SDL_GPUTransferBufferCreateInfo indexTransferBufferCreateInfo{};
+    indexTransferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    indexTransferBufferCreateInfo.size = indexBufferCreateInfo.size;
+
+    vertexTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &vertexTransferBufferCreateInfo);
+    if (!vertexTransferBuffer) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create GPU vertex transfer buffer");
+        return;
+    }
+    
+    indexTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &indexTransferBufferCreateInfo);
+    if (!indexTransferBuffer) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create GPU index transfer buffer");
+        return;
+    }
+
+    void* vertexBufferDataPtr = SDL_MapGPUTransferBuffer(mSDLDevice, vertexTransferBuffer, false);
+    void* indexBufferDataPtr = SDL_MapGPUTransferBuffer(mSDLDevice, indexTransferBuffer, false);
+    if (!vertexBufferDataPtr || !indexBufferDataPtr) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to map GPU transfer buffer data pointers");
+        return;
+    }
+    else {
+        std::span transferBufferData{ static_cast<PositionTextureVertex*>(vertexBufferDataPtr), mGridMesh.vertices.size()};
+        std::ranges::copy(mGridMesh.vertices, transferBufferData.begin());
+
+        std::span indexBufferData{ static_cast<Uint32*>(indexBufferDataPtr), mGridMesh.indices.size()};
+        std::ranges::copy(mGridMesh.indices, indexBufferData.begin());
+    }
+
+    SDL_UnmapGPUTransferBuffer(mSDLDevice, vertexTransferBuffer);
+    SDL_UnmapGPUTransferBuffer(mSDLDevice, indexTransferBuffer);
+    //mMeshes["Grid"] = mGridMesh;
+}
+
 void Renderer::InitMeshes() {
+    InitGrid();
     for (auto& model : Models) {
         Mesh mesh;
         if (InitMesh(model, mesh)) {
@@ -540,9 +654,9 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh 
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s \nmodel filepath: %s", importer.GetErrorString(), modelFullPath.c_str());
         return false;
     }
-    float xMod = modelDescriptor.flipX ? -1.0f : 1.0f;
-    float yMod = modelDescriptor.flipY ? -1.0f : 1.0f;
-    float zMod = modelDescriptor.flipZ ? -1.0f : 1.0f;
+    const float xMod = modelDescriptor.flipX ? -1.0f : 1.0f;
+    const float yMod = modelDescriptor.flipY ? -1.0f : 1.0f;
+    const float zMod = modelDescriptor.flipZ ? -1.0f : 1.0f;
     for (size_t i = 0; i < scene->mNumMeshes; ++i) {
         auto mesh = scene->mMeshes[i];
         if (mesh->HasPositions()) {
@@ -571,6 +685,7 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh 
             }
         }
     }
+    outMesh.samplerTypeIndex = modelDescriptor.samplerTypeIndex;
     return true;
 }
 
@@ -630,6 +745,53 @@ void Renderer::Render(UIManager* uiManager) {
         const CameraComponent* camera = mCameraNodes[0]->mCamera;
         const TransformComponent* cameraTransform = mCameraNodes[0]->mTransform;
 
+        CameraGPU cameraData{};
+        // projection matrix
+        if (camera->mProjectionMode == Renderer::ProjectionMode::Perspective) {
+            const float fovY = glm::radians(camera->mFOV/camera->mAspectRatio);
+            cameraData.projection = glm::perspective(fovY, camera->mAspectRatio, camera->mNearPlane, camera->mFarPlane);
+            cameraData.projection[1][1] *= -1; // flip Y axis for OpenGL
+        }
+        else if (camera->mProjectionMode == Renderer::ProjectionMode::Orthographic) {
+            // Orthographic projection
+            float halfWidth = camera->mOrthoSize * camera->mAspectRatio;
+            float halfHeight = camera->mOrthoSize;
+            cameraData.projection = glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, camera->mNearPlane, camera->mFarPlane);
+        }
+        
+        // view matrix
+        if (camera->mCameraMode == CameraComponent::CameraMode::FirstPerson) {
+            cameraData.view = glm::rotate(cameraData.view, glm::radians(cameraTransform->mRotation.x), glm::vec3(1, 0, 0));
+            cameraData.view = glm::rotate(cameraData.view, glm::radians(cameraTransform->mRotation.y), glm::vec3(0, 1, 0));
+            cameraData.view = glm::rotate(cameraData.view, glm::radians(cameraTransform->mRotation.z), glm::vec3(0, 0, 1));
+            cameraData.view = glm::translate(cameraData.view, cameraTransform->mPosition);
+        }
+        else if (camera->mCameraMode == CameraComponent::CameraMode::ThirdPerson) {
+            cameraData.view = glm::lookAt(cameraTransform->mPosition, camera->mLookAt, camera->mUp);
+        }
+
+        cameraData.viewProjection = cameraData.projection * cameraData.view;
+
+        // Draw Grid
+        // SDL_BindGPUGraphicsPipeline(mRenderPass, mGridPipeline);
+        // std::vector<SDL_GPUBufferBinding> gridBindings{{mGridMesh.vertexBuffer, 0}};
+        // SDL_BindGPUVertexBuffers(mRenderPass, 0, gridBindings.data(), static_cast<Uint32>(gridBindings.size()));
+        // SDL_GPUBufferBinding gridIndexBufferBinding{mGridMesh.indexBuffer, 0};
+        // SDL_BindGPUIndexBuffer(mRenderPass, &gridIndexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+        
+        // glm::mat4 gridModelMatrix = glm::mat4(1.0f);
+        // SDL_PushGPUVertexUniformData(mCommandBuffer, 0, &cameraData, sizeof(CameraGPU));
+        // SDL_PushGPUVertexUniformData(mCommandBuffer, 0, &gridModelMatrix, sizeof(glm::mat4));
+        
+        // GridParamsFragGPU gridParamsFragGPU{};
+        // gridParamsFragGPU.offset = glm::vec2(0.0f, 0.0f);
+        // gridParamsFragGPU.numCells = 16;
+        // gridParamsFragGPU.thickness = 0.0125f;
+        // gridParamsFragGPU.scroll = 5.0f;
+        // SDL_PushGPUFragmentUniformData(mCommandBuffer, 0, &gridParamsFragGPU, sizeof(GridParamsFragGPU));
+        // SDL_DrawGPUIndexedPrimitives(mRenderPass, static_cast<Uint32>(mGridMesh.indices.size()), 1, 0, 0, 0);
+
+        // Draw Meshes
         for (auto& node : mNodesThisFrame) {
             const Renderer::Mesh& mesh = *(node->mDisplay->mMesh);
             const TransformComponent& transform = *(node->mTransform);
@@ -639,33 +801,9 @@ void Renderer::Render(UIManager* uiManager) {
             SDL_BindGPUVertexBuffers(mRenderPass, 0, bindings.data(), static_cast<Uint32>(bindings.size()));
             SDL_GPUBufferBinding indexBufferBinding{mesh.indexBuffer, 0};
             SDL_BindGPUIndexBuffer(mRenderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-            SDL_GPUTextureSamplerBinding textureSamplerBinding{mesh.colorTexture, mSamplers[mCurrentSamplerIndex]};
+            SDL_GPUTextureSamplerBinding textureSamplerBinding{mesh.colorTexture, mSamplers[mesh.samplerTypeIndex]};
             SDL_BindGPUFragmentSamplers(mRenderPass, 0, &textureSamplerBinding, 1);
     
-            // projection matrix
-            glm::mat4 projectionMatrix;
-            if (camera->mProjectionMode == Renderer::ProjectionMode::Perspective) {
-                const float fovY = glm::radians(camera->mFOV/camera->mAspectRatio);
-                projectionMatrix = glm::perspective(fovY, camera->mAspectRatio, camera->mNearPlane, camera->mFarPlane);
-            }
-            else if (camera->mProjectionMode == Renderer::ProjectionMode::Orthographic) {
-                // Orthographic projection
-                float halfWidth = camera->mOrthoSize * camera->mAspectRatio;
-                float halfHeight = camera->mOrthoSize;
-                projectionMatrix = glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, camera->mNearPlane, camera->mFarPlane);
-            }
-            
-            // view matrix
-            glm::mat4 viewMatrix = glm::mat4(1.0f);
-            if (camera->mCameraMode == CameraComponent::CameraMode::FirstPerson) {
-                viewMatrix = glm::rotate(viewMatrix, glm::radians(cameraTransform->mRotation.x), glm::vec3(1, 0, 0));
-                viewMatrix = glm::rotate(viewMatrix, glm::radians(cameraTransform->mRotation.y), glm::vec3(0, 1, 0));
-                viewMatrix = glm::rotate(viewMatrix, glm::radians(cameraTransform->mRotation.z), glm::vec3(0, 0, 1));
-                viewMatrix = glm::translate(viewMatrix, cameraTransform->mPosition);
-            }
-            else if (camera->mCameraMode == CameraComponent::CameraMode::ThirdPerson) {
-                viewMatrix = glm::lookAt(cameraTransform->mPosition, camera->mLookAt, camera->mUp);
-            }
             // model matrix
             glm::mat4 modelMatrix = glm::mat4(1.0f);
             modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));
@@ -675,7 +813,7 @@ void Renderer::Render(UIManager* uiManager) {
             //modelMatrix = glm::rotate(modelMatrix, SDL_GetTicks() / 1000.0f, glm::vec3(0, 0, 1));
             modelMatrix = glm::translate(modelMatrix, transform.mPosition);
             // modelviewprojection matrix
-            glm::mat4 mvpMatrix = (projectionMatrix * viewMatrix) * modelMatrix;
+            glm::mat4 mvpMatrix = cameraData.viewProjection * modelMatrix;
             SDL_PushGPUVertexUniformData(mCommandBuffer, 0, &mvpMatrix, sizeof(glm::mat4));
     
             SDL_DrawGPUIndexedPrimitives(mRenderPass, static_cast<Uint32>(mesh.indices.size()), 1, 0, 0, 0);
@@ -699,6 +837,9 @@ void Renderer::Render(UIManager* uiManager) {
 }
 
 void Renderer::Shutdown() {
+    mPipelines[RenderMode::count] = mGridPipeline;
+    mMeshes["Grid"] = mGridMesh;
+
     for (auto modePipeline : mPipelines) {
         SDL_ReleaseGPUGraphicsPipeline(mSDLDevice, modePipeline.second);
     }
@@ -791,13 +932,13 @@ void Renderer::ProcessCameraInput(const InputState& inputState, const float delt
     if (inputState.altKeyDown) {
         if (inputState.mouseButtonDown[SDL_BUTTON_LEFT]) {
             if (inputState.mouseDragging) {
-                glm::vec2 mouseDelta = inputState.mouseDelta * deltaTime;
+                glm::vec2 mouseDelta = inputState.mouseDelta * deltaTime * 5.0f;
                 transform->mRotation.x += mouseDelta.y;
                 transform->mRotation.z += mouseDelta.x;
             }
         }
         else if (inputState.mouseButtonDown[SDL_BUTTON_RIGHT]) {
-            glm::vec2 mouseDelta = inputState.mouseDelta * deltaTime * 0.1f;
+            glm::vec2 mouseDelta = inputState.mouseDelta * deltaTime;
             transform->mPosition.x -= mouseDelta.x;
             transform->mPosition.y += mouseDelta.y;
         }

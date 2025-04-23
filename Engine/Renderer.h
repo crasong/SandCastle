@@ -42,6 +42,7 @@ public:
         glm::vec3 mRootScale = {1.0f, 1.0f, 1.0f};
         std::vector<PositionTextureVertex> vertices;
         std::vector<Uint32> indices;
+        uint8_t samplerTypeIndex = 0;
         SDL_GPUBuffer* vertexBuffer = nullptr;
         SDL_GPUBuffer* indexBuffer = nullptr;
         SDL_GPUTexture* colorTexture = nullptr;
@@ -51,6 +52,7 @@ public:
         std::string foldername;
         std::string meshFilename;
         std::string textureFilename;
+        uint8_t samplerTypeIndex = 0;
         bool flipX = false;
         bool flipY = false;
         bool flipZ = false;
@@ -81,8 +83,10 @@ private:
     void InitAssetLoader();
     bool InitPipelines();
     void InitSamplers();
+    void InitGrid();
     void InitMeshes();
     bool InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh);
+
 
     bool CreateModelGPUResources(
         const ModelDescriptor& modelDescriptor,
@@ -120,8 +124,9 @@ private:
     std::vector<SDL_GPUSampler*> mSamplers;
     std::unordered_map<RenderMode, SDL_GPUGraphicsPipeline*> mPipelines;
     std::unordered_map<std::string, Mesh> mMeshes;
+    SDL_GPUGraphicsPipeline* mGridPipeline = nullptr;
+    Mesh mGridMesh;
 
-    //CameraNode* mCameraNode = nullptr;
     std::vector<CameraNode*> mCameraNodes;
     std::vector<RenderNode*> mNodesThisFrame;
     SDL_GPUCommandBuffer* mCommandBuffer = nullptr;
@@ -131,7 +136,7 @@ private:
     Uint8 mCurrentSamplerIndex = 0;
     RenderMode mRenderMode = RenderMode::Fill;
     float mScale = 1.0f;
-    const float mScaleStep = 0.1f;
+    const float mScaleStep = 10.0f;
     const float mCameraSpeed = 5.0f;
     const float mCameraRotationSpeed = 0.5f;
 

@@ -33,7 +33,7 @@ bool Engine::Init() {
         Entity entity("Camera");
         entity.AddComponent<CameraComponent>();
         entity.AddComponent<TransformComponent>(
-            glm::vec3(3.0f, 3.0f, 3.0f), 
+            glm::vec3(0.0f, 0.0f, 0.0f), 
             glm::vec3(0.0f, 0.0f, 0.0f), 
             glm::vec3(1.0f)
         );
@@ -198,7 +198,7 @@ void Engine::ProcessEvent(const SDL_KeyboardEvent& event) {
         case SDLK_LALT:
             mInputState.altKeyDown = event.down;
             break;
-        case SDLK_1:
+        case SDLK_Z:
             if (event.down) {
                 mRenderer.CycleRenderMode();
             }

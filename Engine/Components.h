@@ -75,7 +75,7 @@ public:
     float mFarPlane = 100.0f; // Far clipping plane distance
     glm::vec3 mUp = {0.0f, 0.0f, 1.0f}; // Up vector
     glm::vec3 mLookAt = {0.0f, 0.0f, 0.0f}; // Look-at point
-    CameraMode mCameraMode = ThirdPerson; // Camera mode
+    CameraMode mCameraMode = FirstPerson; // Camera mode
     Renderer::ProjectionMode mProjectionMode = Renderer::ProjectionMode::Perspective;
     Renderer::ViewPort mViewPort = {{0, 0}, {0, 0}}; // Viewport dimensions
 };
