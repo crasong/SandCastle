@@ -9,7 +9,6 @@
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_sdlgpu3.h>
 #include <Nodes.h>
-#include <Render/RenderStructs.h>
 #include <SDL3/SDL_vulkan.h>
 #include <SDL3_image/SDL_image.h>
 #include <span>
@@ -71,6 +70,7 @@ bool Renderer::Init(const char* title, int width, int height) {
         return false;
     }
     SDL_SetGPUSwapchainParameters(mSDLDevice, mWindow, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, SDL_GPU_PRESENTMODE_MAILBOX);
+    ResizeWindow(); // Init color and depth targets and camera aspect ratio
 
     if (!InitPipelines()) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to initialize GPU Pipelines");
@@ -192,14 +192,14 @@ bool Renderer::InitPipelines() {
     }
 
     // create grid pipeline
-    // pipelineCreateInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
-    // pipelineCreateInfo.vertex_shader = gridVertShader;
-    // pipelineCreateInfo.fragment_shader = gridFragShader;
-    // mGridPipeline = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &pipelineCreateInfo);
-    // if (!mGridPipeline) {
-    //     SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Grid' graphics pipeline");
-    //     return false;
-    // }
+    pipelineCreateInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+    pipelineCreateInfo.vertex_shader = gridVertShader;
+    pipelineCreateInfo.fragment_shader = gridFragShader;
+    mGridPipeline = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &pipelineCreateInfo);
+    if (!mGridPipeline) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Grid' graphics pipeline");
+        return false;
+    }
 
     SDL_ReleaseGPUShader(mSDLDevice, vertexShader);
     SDL_ReleaseGPUShader(mSDLDevice, fragmentShader);
@@ -509,8 +509,6 @@ bool Renderer::CreateTextureGPUResources(
     }
     SDL_SetGPUTextureName(mSDLDevice, mesh.colorTexture, modelDescriptor.textureFilename.c_str());
 
-    Resize(); // Setup the Depth Texture
-    
     // Set the texture data
     SDL_GPUTransferBufferCreateInfo textureTransferBufferCreateInfo{
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
@@ -695,145 +693,189 @@ void Renderer::Clear() {
 // This is ugly. I'm passing the UIManager in because 
 // I haven't figured out how to do multiple render passes.
 void Renderer::Render(UIManager* uiManager) {
+    RenderPassContext context{};
+    if (!BeginRenderPass(context)) {
+        EndRenderPass(context);
+        return;
+    }
     uiManager->BeginFrame();
+
+    CameraGPU cameraData{};
+    InitCameraData(mCameraNodes[0], context.cameraData);
+
+    RecordModelCommands(context);
+    RecordUICommands(context);
+
+    EndRenderPass(context);
+}
+
+bool Renderer::BeginRenderPass(RenderPassContext& context) {
+    context.commandBuffer = SDL_AcquireGPUCommandBuffer(mSDLDevice);
+    if (!context.commandBuffer) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
+        mNodesThisFrame.clear();
+        return false;
+    }
+
+    if (!SDL_WaitAndAcquireGPUSwapchainTexture(context.commandBuffer, mWindow, &context.swapchainTexture, nullptr, nullptr)) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_WaitAndAcquireGPUSwapchainTexture failed: %s", SDL_GetError());
+        mNodesThisFrame.clear();
+        return false;
+    }
+    return true;
+}
+
+void Renderer::InitCameraData(const CameraNode* cameraNode, CameraGPU& outCameraData) const {
+    // Get Camera
+    const CameraComponent* camera = cameraNode->mCamera;
+    const TransformComponent* cameraTransform = cameraNode->mTransform;
+
+    // projection matrix
+    if (camera->mProjectionMode == Renderer::ProjectionMode::Perspective) {
+        const float fovY = glm::radians(camera->mFOV/camera->mAspectRatio);
+        outCameraData.projection = glm::perspective(fovY, camera->mAspectRatio, camera->mNearPlane, camera->mFarPlane);
+        outCameraData.projection[1][1] *= -1; // flip Y axis for OpenGL
+    }
+    else if (camera->mProjectionMode == Renderer::ProjectionMode::Orthographic) {
+        // Orthographic projection
+        float halfWidth = camera->mOrthoSize * camera->mAspectRatio;
+        float halfHeight = camera->mOrthoSize;
+        outCameraData.projection = glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, camera->mNearPlane, camera->mFarPlane);
+    }
+
+    // view matrix
+    if (camera->mCameraMode == CameraComponent::CameraMode::FirstPerson) {
+        outCameraData.view = glm::rotate(outCameraData.view, glm::radians(cameraTransform->mRotation.x), glm::vec3(1, 0, 0));
+        outCameraData.view = glm::rotate(outCameraData.view, glm::radians(cameraTransform->mRotation.y), glm::vec3(0, 1, 0));
+        outCameraData.view = glm::rotate(outCameraData.view, glm::radians(cameraTransform->mRotation.z), glm::vec3(0, 0, 1));
+        outCameraData.view = glm::translate(outCameraData.view, cameraTransform->mPosition);
+    }
+    else if (camera->mCameraMode == CameraComponent::CameraMode::ThirdPerson) {
+        outCameraData.view = glm::lookAt(cameraTransform->mPosition, camera->mLookAt, camera->mUp);
+    }
+
+    outCameraData.viewProjection = outCameraData.projection * outCameraData.view;
+
+}
+
+void Renderer::RecordGridCommands(RenderPassContext& context) {
+    // Draw Grid
+    SDL_BindGPUGraphicsPipeline(context.renderPass, mGridPipeline);
+    std::vector<SDL_GPUBufferBinding> gridBindings{{mGridMesh.vertexBuffer, 0}};
+    SDL_BindGPUVertexBuffers(context.renderPass, 0, gridBindings.data(), static_cast<Uint32>(gridBindings.size()));
+    SDL_GPUBufferBinding gridIndexBufferBinding{mGridMesh.indexBuffer, 0};
+    SDL_BindGPUIndexBuffer(context.renderPass, &gridIndexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+    
+    glm::mat4 gridModelMatrix = glm::mat4(1.0f);
+    SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraGPU));
+    SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &gridModelMatrix, sizeof(glm::mat4));
+    
+    GridParamsFragGPU gridParamsFragGPU{};
+    gridParamsFragGPU.offset = glm::vec2(0.0f, 0.0f);
+    gridParamsFragGPU.numCells = 16;
+    gridParamsFragGPU.thickness = 0.0125f;
+    gridParamsFragGPU.scroll = 5.0f;
+    SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &gridParamsFragGPU, sizeof(GridParamsFragGPU));
+    SDL_DrawGPUIndexedPrimitives(context.renderPass, static_cast<Uint32>(mGridMesh.indices.size()), 1, 0, 0, 0);
+}
+
+void Renderer::RecordModelCommands(RenderPassContext& context) {
+    SDL_GPUColorTargetInfo colorTarget{};
+    colorTarget.texture = context.swapchainTexture;
+    colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
+    colorTarget.store_op = SDL_GPU_STOREOP_STORE;
+    colorTarget.layer_or_depth_plane = 0;
+    colorTarget.clear_color = SDL_FColor{0.3f,0.2f,0.2f,1.0f};
+    std::vector<SDL_GPUColorTargetInfo> colorTargets {colorTarget};
+    SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+
+    SDL_GPUDepthStencilTargetInfo depthStencilTarget{};
+    depthStencilTarget.texture = mDepthTexture;
+    depthStencilTarget.clear_depth = 1.0f;
+    depthStencilTarget.load_op = SDL_GPU_LOADOP_CLEAR;
+    depthStencilTarget.store_op = SDL_GPU_STOREOP_STORE;
+    depthStencilTarget.clear_stencil = 0;
+    
+    SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(context.commandBuffer, colorTargets.data(), static_cast<Uint32>(colorTargets.size()), &depthStencilTarget);
+    if (!renderPass) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_BeginGPURenderPass failed: %s", SDL_GetError());
+        mNodesThisFrame.clear();
+        return;
+    }
+    // Draw Grid
+    // Assigning renderpass to the context is temporary. I might not need a struct to hold all of it
+    context.renderPass = renderPass;
+    RecordGridCommands(context);
+    context.renderPass = nullptr;
+    
+    // Draw Meshes
+    for (auto& node : mNodesThisFrame) {
+        const Renderer::Mesh& mesh = *(node->mDisplay->mMesh);
+        const TransformComponent& transform = *(node->mTransform);
+
+        SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);
+        std::vector<SDL_GPUBufferBinding> bindings{{mesh.vertexBuffer, 0}};
+        SDL_BindGPUVertexBuffers(renderPass, 0, bindings.data(), static_cast<Uint32>(bindings.size()));
+        SDL_GPUBufferBinding indexBufferBinding{mesh.indexBuffer, 0};
+        SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+        SDL_GPUTextureSamplerBinding textureSamplerBinding{mesh.colorTexture, mSamplers[mesh.samplerTypeIndex]};
+        SDL_BindGPUFragmentSamplers(renderPass, 0, &textureSamplerBinding, 1);
+
+        // model matrix
+        glm::mat4 modelMatrix = glm::mat4(1.0f);
+        modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));
+        modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.x), glm::vec3(1, 0, 0));
+        modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.y), glm::vec3(0, 1, 0));
+        modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.z), glm::vec3(0, 0, 1));
+        //modelMatrix = glm::rotate(modelMatrix, SDL_GetTicks() / 1000.0f, glm::vec3(0, 0, 1));
+        modelMatrix = glm::translate(modelMatrix, transform.mPosition);
+        // modelviewprojection matrix
+        glm::mat4 mvpMatrix = context.cameraData.viewProjection * modelMatrix;
+        SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &mvpMatrix, sizeof(glm::mat4));
+
+        SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mesh.indices.size()), 1, 0, 0, 0);
+    }
+
+    SDL_EndGPURenderPass(renderPass);
+}
+
+void Renderer::RecordUICommands(RenderPassContext& context) {
     ImGui::Render();
     ImDrawData* drawData = ImGui::GetDrawData();
     const bool bUIMinimized = (drawData->DisplaySize.x <= 0.0f || drawData->DisplaySize.y <= 0.0f);
 
-    mCommandBuffer = SDL_AcquireGPUCommandBuffer(mSDLDevice);
-    if (!mCommandBuffer) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
-        mNodesThisFrame.clear();
+    if (!bUIMinimized) {
+        // This is mandatory: call ImGui_ImplSDLGPU3_PrepareDrawData() to upload the vertex/index buffer!
+        ImGui_ImplSDLGPU3_PrepareDrawData(drawData, context.commandBuffer);
+    }
+
+    SDL_GPUColorTargetInfo colorTarget{};
+    colorTarget.texture = context.swapchainTexture;
+    colorTarget.load_op = SDL_GPU_LOADOP_LOAD;
+    colorTarget.store_op = SDL_GPU_STOREOP_STORE;
+    colorTarget.layer_or_depth_plane = 0;
+    colorTarget.clear_color = SDL_FColor{0.3f,0.2f,0.2f,1.0f};
+    std::vector<SDL_GPUColorTargetInfo> colorTargets {colorTarget};
+    SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(context.commandBuffer, colorTargets.data(), static_cast<Uint32>(colorTargets.size()), nullptr);
+    if (!renderPass) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_BeginGPURenderPass failed: %s", SDL_GetError());
         return;
     }
-
-    if (!SDL_WaitAndAcquireGPUSwapchainTexture(mCommandBuffer, mWindow, &mSwapchainTexture, nullptr, nullptr)) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_WaitAndAcquireGPUSwapchainTexture failed: %s", SDL_GetError());
-        mNodesThisFrame.clear();
-        return;
+    // Draw UI
+    if (!bUIMinimized) {
+        ImGui_ImplSDLGPU3_RenderDrawData(drawData, context.commandBuffer, renderPass);
     }
-    if (mSwapchainTexture) {
-        if (!bUIMinimized) {
-            // This is mandatory: call ImGui_ImplSDLGPU3_PrepareDrawData() to upload the vertex/index buffer!
-            ImGui_ImplSDLGPU3_PrepareDrawData(drawData, mCommandBuffer);
-        }
+    SDL_EndGPURenderPass(renderPass);
+}
 
-        SDL_GPUColorTargetInfo colorTarget{};
-        colorTarget.texture = mSwapchainTexture;
-        colorTarget.store_op = SDL_GPU_STOREOP_STORE;
-        colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
-        colorTarget.layer_or_depth_plane = 0;
-        colorTarget.clear_color = SDL_FColor{0.3f,0.2f,0.2f,1.0f};
-        std::vector<SDL_GPUColorTargetInfo> colorTargets {colorTarget};
-        SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
-
-        SDL_GPUDepthStencilTargetInfo depthStencilTarget{};
-        depthStencilTarget.texture = mDepthTexture;
-        depthStencilTarget.clear_depth = 1.0f;
-        depthStencilTarget.load_op = SDL_GPU_LOADOP_CLEAR;
-        depthStencilTarget.store_op = SDL_GPU_STOREOP_STORE;
-        depthStencilTarget.clear_stencil = 0;
-        
-        mRenderPass = SDL_BeginGPURenderPass(mCommandBuffer, colorTargets.data(), static_cast<Uint32>(colorTargets.size()), &depthStencilTarget);
-        if (!mRenderPass) {
-            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_BeginGPURenderPass failed: %s", SDL_GetError());
-            mNodesThisFrame.clear();
-            return;
-        }
-        
-        // Get Camera
-        const CameraComponent* camera = mCameraNodes[0]->mCamera;
-        const TransformComponent* cameraTransform = mCameraNodes[0]->mTransform;
-
-        CameraGPU cameraData{};
-        // projection matrix
-        if (camera->mProjectionMode == Renderer::ProjectionMode::Perspective) {
-            const float fovY = glm::radians(camera->mFOV/camera->mAspectRatio);
-            cameraData.projection = glm::perspective(fovY, camera->mAspectRatio, camera->mNearPlane, camera->mFarPlane);
-            cameraData.projection[1][1] *= -1; // flip Y axis for OpenGL
-        }
-        else if (camera->mProjectionMode == Renderer::ProjectionMode::Orthographic) {
-            // Orthographic projection
-            float halfWidth = camera->mOrthoSize * camera->mAspectRatio;
-            float halfHeight = camera->mOrthoSize;
-            cameraData.projection = glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, camera->mNearPlane, camera->mFarPlane);
-        }
-        
-        // view matrix
-        if (camera->mCameraMode == CameraComponent::CameraMode::FirstPerson) {
-            cameraData.view = glm::rotate(cameraData.view, glm::radians(cameraTransform->mRotation.x), glm::vec3(1, 0, 0));
-            cameraData.view = glm::rotate(cameraData.view, glm::radians(cameraTransform->mRotation.y), glm::vec3(0, 1, 0));
-            cameraData.view = glm::rotate(cameraData.view, glm::radians(cameraTransform->mRotation.z), glm::vec3(0, 0, 1));
-            cameraData.view = glm::translate(cameraData.view, cameraTransform->mPosition);
-        }
-        else if (camera->mCameraMode == CameraComponent::CameraMode::ThirdPerson) {
-            cameraData.view = glm::lookAt(cameraTransform->mPosition, camera->mLookAt, camera->mUp);
-        }
-
-        cameraData.viewProjection = cameraData.projection * cameraData.view;
-
-        // Draw Grid
-        // SDL_BindGPUGraphicsPipeline(mRenderPass, mGridPipeline);
-        // std::vector<SDL_GPUBufferBinding> gridBindings{{mGridMesh.vertexBuffer, 0}};
-        // SDL_BindGPUVertexBuffers(mRenderPass, 0, gridBindings.data(), static_cast<Uint32>(gridBindings.size()));
-        // SDL_GPUBufferBinding gridIndexBufferBinding{mGridMesh.indexBuffer, 0};
-        // SDL_BindGPUIndexBuffer(mRenderPass, &gridIndexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-        
-        // glm::mat4 gridModelMatrix = glm::mat4(1.0f);
-        // SDL_PushGPUVertexUniformData(mCommandBuffer, 0, &cameraData, sizeof(CameraGPU));
-        // SDL_PushGPUVertexUniformData(mCommandBuffer, 0, &gridModelMatrix, sizeof(glm::mat4));
-        
-        // GridParamsFragGPU gridParamsFragGPU{};
-        // gridParamsFragGPU.offset = glm::vec2(0.0f, 0.0f);
-        // gridParamsFragGPU.numCells = 16;
-        // gridParamsFragGPU.thickness = 0.0125f;
-        // gridParamsFragGPU.scroll = 5.0f;
-        // SDL_PushGPUFragmentUniformData(mCommandBuffer, 0, &gridParamsFragGPU, sizeof(GridParamsFragGPU));
-        // SDL_DrawGPUIndexedPrimitives(mRenderPass, static_cast<Uint32>(mGridMesh.indices.size()), 1, 0, 0, 0);
-
-        // Draw Meshes
-        for (auto& node : mNodesThisFrame) {
-            const Renderer::Mesh& mesh = *(node->mDisplay->mMesh);
-            const TransformComponent& transform = *(node->mTransform);
-
-            SDL_BindGPUGraphicsPipeline(mRenderPass, mPipelines[mRenderMode]);
-            std::vector<SDL_GPUBufferBinding> bindings{{mesh.vertexBuffer, 0}};
-            SDL_BindGPUVertexBuffers(mRenderPass, 0, bindings.data(), static_cast<Uint32>(bindings.size()));
-            SDL_GPUBufferBinding indexBufferBinding{mesh.indexBuffer, 0};
-            SDL_BindGPUIndexBuffer(mRenderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-            SDL_GPUTextureSamplerBinding textureSamplerBinding{mesh.colorTexture, mSamplers[mesh.samplerTypeIndex]};
-            SDL_BindGPUFragmentSamplers(mRenderPass, 0, &textureSamplerBinding, 1);
-    
-            // model matrix
-            glm::mat4 modelMatrix = glm::mat4(1.0f);
-            modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));
-            modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.x), glm::vec3(1, 0, 0));
-            modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.y), glm::vec3(0, 1, 0));
-            modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.z), glm::vec3(0, 0, 1));
-            //modelMatrix = glm::rotate(modelMatrix, SDL_GetTicks() / 1000.0f, glm::vec3(0, 0, 1));
-            modelMatrix = glm::translate(modelMatrix, transform.mPosition);
-            // modelviewprojection matrix
-            glm::mat4 mvpMatrix = cameraData.viewProjection * modelMatrix;
-            SDL_PushGPUVertexUniformData(mCommandBuffer, 0, &mvpMatrix, sizeof(glm::mat4));
-    
-            SDL_DrawGPUIndexedPrimitives(mRenderPass, static_cast<Uint32>(mesh.indices.size()), 1, 0, 0, 0);
-        }
-        // Draw UI
-        if (!bUIMinimized) {
-            ImGui_ImplSDLGPU3_RenderDrawData(drawData, mCommandBuffer, mRenderPass);
-        }
-
-
-        SDL_EndGPURenderPass(mRenderPass);
-    }
-    
-    mNodesThisFrame.clear();
-
-    if (!SDL_SubmitGPUCommandBuffer(mCommandBuffer)) {
+void Renderer::EndRenderPass(RenderPassContext& context) {
+    if (!SDL_SubmitGPUCommandBuffer(context.commandBuffer)) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_SubmitGPUCommandBuffer failed: %s", SDL_GetError());
     }
-    mCommandBuffer = nullptr;
-    mSwapchainTexture = nullptr;
+    context.commandBuffer = nullptr;
+    context.swapchainTexture = nullptr;
+
+    mNodesThisFrame.clear();
 }
 
 void Renderer::Shutdown() {
@@ -857,13 +899,27 @@ void Renderer::Shutdown() {
     if (mWindow) SDL_DestroyWindow(mWindow);
 }
 
-void Renderer::Resize() {
+void Renderer::ResizeWindow() {
     if (mDepthTexture) SDL_ReleaseGPUTexture(mSDLDevice, mDepthTexture);
+    if (mColorTexture) SDL_ReleaseGPUTexture(mSDLDevice, mColorTexture);
     int windowWidth, windowHeight;
     if (!SDL_GetWindowSize(mWindow, &windowWidth, &windowHeight)) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_GetWindowSize failed: %s", SDL_GetError());
         return;
     }
+    SDL_GPUTextureCreateInfo colorTextureCreateInfo{
+        .type = SDL_GPU_TEXTURETYPE_2D,
+        .format = SDL_GetGPUSwapchainTextureFormat(mSDLDevice, mWindow),
+        .usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+        .width = static_cast<Uint32>(windowWidth),
+        .height = static_cast<Uint32>(windowHeight),
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+        .sample_count = SDL_GPU_SAMPLECOUNT_1,
+    };
+    mColorTexture = SDL_CreateGPUTexture(mSDLDevice, &colorTextureCreateInfo);
+    SDL_SetGPUTextureName(mSDLDevice, mColorTexture, "Color Texture");
+
     SDL_GPUTextureCreateInfo depthTextureCreateInfo{
         .type = SDL_GPU_TEXTURETYPE_2D,
         .format = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,

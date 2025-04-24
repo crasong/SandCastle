@@ -2,6 +2,7 @@
 
 #include <glm/glm.hpp>
 #include <Input.h>
+#include <Render/RenderStructs.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gpu.h>
 #include <string>
@@ -58,6 +59,13 @@ public:
         bool flipZ = false;
     };
 
+    struct RenderPassContext {
+        SDL_GPUCommandBuffer* commandBuffer = nullptr;
+        SDL_GPUTexture* swapchainTexture = nullptr;
+        SDL_GPURenderPass* renderPass = nullptr;
+        CameraGPU cameraData{};
+    };
+
 public:
     Renderer();
     ~Renderer();
@@ -67,7 +75,7 @@ public:
     void Render(UIManager* uiManager);
     void Shutdown();
 
-    void Resize();
+    void ResizeWindow();
     void CycleRenderMode();
     void CycleSampler();
     void IncreaseScale();
@@ -87,6 +95,13 @@ private:
     void InitMeshes();
     bool InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh);
 
+    // Render pass functions
+    bool BeginRenderPass(RenderPassContext& context);
+    void InitCameraData(const CameraNode* cameraNode, CameraGPU& outCameraData) const;
+    void RecordGridCommands(RenderPassContext& context);
+    void RecordModelCommands(RenderPassContext& context);
+    void RecordUICommands(RenderPassContext& context);
+    void EndRenderPass(RenderPassContext& context);
 
     bool CreateModelGPUResources(
         const ModelDescriptor& modelDescriptor,
@@ -119,6 +134,7 @@ private:
 private:
     SDL_Window* mWindow = nullptr;
     SDL_GPUDevice* mSDLDevice = nullptr;
+    SDL_GPUTexture* mColorTexture = nullptr;
     SDL_GPUTexture* mDepthTexture = nullptr;
     
     std::vector<SDL_GPUSampler*> mSamplers;
@@ -129,9 +145,10 @@ private:
 
     std::vector<CameraNode*> mCameraNodes;
     std::vector<RenderNode*> mNodesThisFrame;
-    SDL_GPUCommandBuffer* mCommandBuffer = nullptr;
-    SDL_GPUTexture* mSwapchainTexture = nullptr;
-    SDL_GPURenderPass* mRenderPass = nullptr;
+
+    //SDL_GPUCommandBuffer* mCommandBuffer = nullptr;
+    //SDL_GPUTexture* mSwapchainTexture = nullptr;
+    //SDL_GPURenderPass* mRenderPass = nullptr;
 
     Uint8 mCurrentSamplerIndex = 0;
     RenderMode mRenderMode = RenderMode::Fill;

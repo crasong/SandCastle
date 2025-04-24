@@ -33,8 +33,8 @@ bool Engine::Init() {
         Entity entity("Camera");
         entity.AddComponent<CameraComponent>();
         entity.AddComponent<TransformComponent>(
-            glm::vec3(0.0f, 0.0f, 0.0f), 
-            glm::vec3(0.0f, 0.0f, 0.0f), 
+            glm::vec3(0.0f, -2.0f, 0.0f), 
+            glm::vec3(90.0f, 0.0f, 0.0f), 
             glm::vec3(1.0f)
         );
         entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
@@ -124,7 +124,7 @@ void Engine::PollEvents() {
             case SDL_EVENT_WINDOW_EXPOSED:
             case SDL_EVENT_WINDOW_MINIMIZED:
             case SDL_EVENT_WINDOW_MAXIMIZED:
-                mRenderer.Resize();
+                mRenderer.ResizeWindow();
                 break;
         }
     }
