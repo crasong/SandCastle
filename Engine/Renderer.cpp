@@ -29,6 +29,7 @@ static std::vector<Renderer::ModelDescriptor> Models =
 {
     {"viking_room", "viking_room.obj", "viking_room.png", 0, false, false, false},
     {"DamagedHelmet", "DamagedHelmet.gltf", "Default_albedo.jpg", 1, false, false, false},
+    {"SciFiHelmet", "SciFiHelmet.gltf", "SciFiHelmet_BaseColor.png", 1, false, false, false},
 };
 static std::vector<Renderer::PositionTextureVertex> s_GridVertices = {
     {{-0.5f, 0.0f, -0.5f}, {0.0f, 0.0f}},
@@ -800,12 +801,12 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
 
         // model matrix
         glm::mat4 modelMatrix = glm::mat4(1.0f);
-        modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));
+        modelMatrix = glm::translate(modelMatrix, transform.mPosition);
         modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.y), glm::vec3(0, 1, 0));
         modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.x), glm::vec3(1, 0, 0));
         modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.z), glm::vec3(0, 0, 1));
+        modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));
         //modelMatrix = glm::rotate(modelMatrix, SDL_GetTicks() / 1000.0f, glm::vec3(0, 0, 1));
-        modelMatrix = glm::translate(modelMatrix, transform.mPosition);
         // modelviewprojection matrix
         glm::mat4 mvpMatrix = context.cameraData.viewProjection * modelMatrix;
         SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &mvpMatrix, sizeof(glm::mat4));

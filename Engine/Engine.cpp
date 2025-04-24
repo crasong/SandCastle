@@ -34,7 +34,7 @@ bool Engine::Init() {
         Entity entity("Camera");
         entity.AddComponent<CameraComponent>();
         entity.AddComponent<TransformComponent>(
-            glm::vec3(0.0f, 0.0f, -5.0f), 
+            glm::vec3(0.0f, 0.0f, -10.0f), 
             glm::vec3(0.0f, 0.0f, 0.0f), 
             glm::vec3(1.0f)
         );
@@ -45,15 +45,32 @@ bool Engine::Init() {
     {
         Entity entity("Space Helmet");
         entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["DamagedHelmet"]);
-        entity.AddComponent<TransformComponent>(glm::vec3(), glm::vec3(), glm::vec3(0.7f));
+        entity.AddComponent<TransformComponent>(
+            glm::vec3(3.0f, 0.0f, 0.0f), 
+            glm::vec3(0.0f, 225.0f, 0.0f), 
+            glm::vec3(1.0f));
         entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
         entity.AddComponent<UIComponent>();
         AddEntity(new Entity(std::move(entity)));
-}
+    }
+    {
+        Entity entity("Sci Fi Helmet");
+        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["SciFiHelmet"]);
+        entity.AddComponent<TransformComponent>(
+            glm::vec3(-3.0f, 0.0f, 0.0f), 
+            glm::vec3(0.0f, 135.0f, 0.0f), 
+            glm::vec3(1.0f));
+        entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+        entity.AddComponent<UIComponent>();
+        AddEntity(new Entity(std::move(entity)));
+    }
     {
         Entity entity("Viking Room");
         entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["viking_room"]);
-        entity.AddComponent<TransformComponent>(glm::vec3(), glm::vec3(), glm::vec3(1.0f));
+        entity.AddComponent<TransformComponent>(
+            glm::vec3(0.0f, -7.0f, 2.0f), 
+            glm::vec3(-90.0f, 90.0f, 0.0f), 
+            glm::vec3(15.0f));
         entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
         entity.AddComponent<UIComponent>();
         AddEntity(new Entity(std::move(entity)));
