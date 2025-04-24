@@ -647,7 +647,7 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh 
     std::string modelFullPath = std::format("{}/Content/Models/{}/{}", BasePath, modelDescriptor.foldername, modelDescriptor.meshFilename);
     // Load the model
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(modelFullPath, aiProcess_Triangulate | aiProcess_MakeLeftHanded | aiProcess_FlipUVs);
+    const aiScene* scene = importer.ReadFile(modelFullPath, aiProcess_Triangulate | aiProcess_PreTransformVertices | aiProcess_FlipUVs);
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->HasMeshes()) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s \nmodel filepath: %s", importer.GetErrorString(), modelFullPath.c_str());
         return false;
