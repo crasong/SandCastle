@@ -726,34 +726,9 @@ bool Renderer::BeginRenderPass(RenderPassContext& context) {
 }
 
 void Renderer::InitCameraData(const CameraNode* cameraNode, CameraGPU& outCameraData) const {
-    // Get Camera
-    const CameraComponent* camera = cameraNode->mCamera;
-    const TransformComponent* cameraTransform = cameraNode->mTransform;
-
-    // projection matrix
-    if (camera->mProjectionMode == Renderer::ProjectionMode::Perspective) {
-        const float fovY = glm::radians(camera->mFOV/camera->mAspectRatio);
-        outCameraData.projection = glm::perspective(fovY, camera->mAspectRatio, camera->mNearPlane, camera->mFarPlane);
-        outCameraData.projection[1][1] *= -1; // flip Y axis for OpenGL
-    }
-    else if (camera->mProjectionMode == Renderer::ProjectionMode::Orthographic) {
-        // Orthographic projection
-        float halfWidth = camera->mOrthoSize * camera->mAspectRatio;
-        float halfHeight = camera->mOrthoSize;
-        outCameraData.projection = glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, camera->mNearPlane, camera->mFarPlane);
-    }
-
-    // view matrix
-    if (camera->mCameraMode == CameraComponent::CameraMode::FirstPerson) {
-        outCameraData.view = glm::rotate(outCameraData.view, glm::radians(cameraTransform->mRotation.x), glm::vec3(1, 0, 0));
-        outCameraData.view = glm::rotate(outCameraData.view, glm::radians(cameraTransform->mRotation.y), glm::vec3(0, 1, 0));
-        outCameraData.view = glm::rotate(outCameraData.view, glm::radians(cameraTransform->mRotation.z), glm::vec3(0, 0, 1));
-        outCameraData.view = glm::translate(outCameraData.view, cameraTransform->mPosition);
-    }
-    else if (camera->mCameraMode == CameraComponent::CameraMode::ThirdPerson) {
-        outCameraData.view = glm::lookAt(cameraTransform->mPosition, camera->mLookAt, camera->mUp);
-    }
-
+    auto& camera = cameraNode->mCamera;
+    outCameraData.view = camera->mViewMatrix;
+    outCameraData.projection = camera->mProjectionMatrix;
     outCameraData.viewProjection = outCameraData.projection * outCameraData.view;
 
 }
@@ -810,6 +785,8 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
     
     // Draw Meshes
     for (auto& node : mNodesThisFrame) {
+        if (!node->mDisplay->mShow) continue;
+        
         const Renderer::Mesh& mesh = *(node->mDisplay->mMesh);
         const TransformComponent& transform = *(node->mTransform);
 
@@ -824,8 +801,8 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
         // model matrix
         glm::mat4 modelMatrix = glm::mat4(1.0f);
         modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));
-        modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.x), glm::vec3(1, 0, 0));
         modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.y), glm::vec3(0, 1, 0));
+        modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.x), glm::vec3(1, 0, 0));
         modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.z), glm::vec3(0, 0, 1));
         //modelMatrix = glm::rotate(modelMatrix, SDL_GetTicks() / 1000.0f, glm::vec3(0, 0, 1));
         modelMatrix = glm::translate(modelMatrix, transform.mPosition);
@@ -976,30 +953,5 @@ void Renderer::DecreaseScale() {
     mScale -= mScaleStep;
     if (mScale < 0.2f) {
         mScale = 0.2f;
-    }
-}
-
-void Renderer::ProcessCameraInput(const InputState& inputState, const float deltaTime) {
-    if (mCameraNodes.size() == 0) return;
-    CameraNode* cameraNode = mCameraNodes[0];
-    CameraComponent* camera = cameraNode->mCamera;
-    TransformComponent* transform = cameraNode->mTransform;
-
-    if (inputState.altKeyDown) {
-        if (inputState.mouseButtonDown[SDL_BUTTON_LEFT]) {
-            if (inputState.mouseDragging) {
-                glm::vec2 mouseDelta = inputState.mouseDelta * deltaTime * 5.0f;
-                transform->mRotation.x += mouseDelta.y;
-                transform->mRotation.z += mouseDelta.x;
-            }
-        }
-        else if (inputState.mouseButtonDown[SDL_BUTTON_RIGHT]) {
-            glm::vec2 mouseDelta = inputState.mouseDelta * deltaTime;
-            transform->mPosition.x -= mouseDelta.x;
-            transform->mPosition.y += mouseDelta.y;
-        }
-        mScale += inputState.mouseScroll.y * mScaleStep * deltaTime;
-        if (mScale < 0.2f) mScale = 0.2f;
-        if (mScale > 5.0f) mScale = 5.0f;
     }
 }

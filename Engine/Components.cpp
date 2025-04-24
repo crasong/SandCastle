@@ -23,6 +23,7 @@ void DisplayComponent::BeginFrame() {
         ImGui::Text("Mesh Information");
         ImGui::Text("\tVertices: %i", mMesh->vertices.size());
         ImGui::Text("\tIndices: %i", mMesh->indices.size());
+        ImGui::Checkbox("Show", &mShow);
     }
 }
 
@@ -75,7 +76,7 @@ void CameraComponent::BeginFrame() {
     ImGui::SameLine();
     ImGui::Text("Camera Mode is %s", mCameraMode == CameraComponent::CameraMode::FirstPerson ? "First Person" : "Third Person");
     if (mCameraMode == CameraComponent::CameraMode::ThirdPerson) {
-        ImGui::InputFloat3("Look At", &mLookAt.x);
+        ImGui::InputFloat3("Center", &mCenter.x);
         ImGui::SameLine();
         ImGui::InputFloat3("Up Vector", &mUp.x);
     }

@@ -1,6 +1,7 @@
 #include "Engine.h"
 
 #include <Entity.h>
+#include <glm/gtc/matrix_transform.hpp>
 #include <imgui_impl_sdl3.h>
 #include <Nodes.h>
 #include <Systems.h>
@@ -33,8 +34,8 @@ bool Engine::Init() {
         Entity entity("Camera");
         entity.AddComponent<CameraComponent>();
         entity.AddComponent<TransformComponent>(
-            glm::vec3(0.0f, -2.0f, 0.0f), 
-            glm::vec3(90.0f, 0.0f, 0.0f), 
+            glm::vec3(0.0f, 0.0f, -5.0f), 
+            glm::vec3(0.0f, 0.0f, 0.0f), 
             glm::vec3(1.0f)
         );
         entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
@@ -150,7 +151,7 @@ bool Engine::AddSystem(ISystem* system) {
 }
 
 void Engine::Update(float deltaTime) {
-    mRenderer.ProcessCameraInput(mInputState, deltaTime);
+    ProcessCameraInput(deltaTime, mRenderer.GetCameraEntity());
     mInputState.mouseScroll = { 0.0f, 0.0f };
     mInputState.mouseDelta = { 0.0f, 0.0f };
 
@@ -230,4 +231,100 @@ void Engine::ProcessEvent(const SDL_MouseButtonEvent& event) {
 }
 void Engine::ProcessEvent(const SDL_WindowEvent& event) {
     // Handle window events here
+}
+
+void Engine::ProcessCameraInput(const float deltaTime, CameraNode* camera) {
+    if (camera == nullptr) return;
+    CameraComponent* cam = camera->mCamera;
+    TransformComponent* transform = camera->mTransform;
+
+    float camSpeed = 1.0f * deltaTime * cam->mDistance;
+    float angleSpeed = 45.0f * deltaTime;
+    float tiltSpeed = 30.0f * deltaTime;
+
+    float yaw = transform->mRotation.y;
+    glm::vec3 forwardDir{glm::sin(yaw), 0.0f, glm::cos(yaw)};
+    glm::vec3 rightDir(forwardDir.z, 0.0f, -forwardDir.x);
+    glm::vec3 upDir(cam->mUp);
+
+    //glm::vec4 forward4 = glm::rotate(glm::mat4(1.0f), glm::radians(cam->mAngle), cam->mUp) * glm::vec4(0.0f, 0.0f, -1.0f, 1.0f);
+    //glm::vec3 forward = glm::vec3(forward4.x, forward4.y, forward4.z);
+    //glm::vec4 right4 = glm::rotate(glm::mat4(1.0f), glm::radians(cam->mAngle), cam->mUp) * glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+    //glm::vec3 right = glm::vec3(right4.x, right4.y, right4.z);
+
+    glm::vec3 camVel(0.0f, 0.0f, 0.0f);
+    if (mInputState.keyDown[SDLK_W]) {
+        camVel += forwardDir;
+    }
+    if (mInputState.keyDown[SDLK_S]) {
+        camVel -= forwardDir;
+    }
+    if (mInputState.keyDown[SDLK_A]) {
+        camVel -= rightDir;
+    }
+    if (mInputState.keyDown[SDLK_D]) {
+        camVel += rightDir;
+    }
+    if (mInputState.keyDown[SDLK_SPACE]) {
+        camVel += upDir;
+    }
+    if (mInputState.keyDown[SDLK_LCTRL]) {
+        camVel -= upDir;
+    }
+
+    if (glm::dot(camVel, camVel) > std::numeric_limits<float>::epsilon()) {
+        transform->mPosition += glm::normalize(camVel) * camSpeed;
+    }
+
+    // cam->mTargetCenter += glm::normalize(camVel) * camSpeed;
+    // if (glm::length(cam->mTargetCenter) > CAMERA_MAX_POSITION) {
+    //     cam->mTargetCenter = glm::normalize(cam->mTargetCenter) * CAMERA_MAX_POSITION;
+    // }
+
+    // DecayTo(cam->mCenter  , cam->mTargetCenter  , 0.98f, deltaTime);
+    // DecayTo(cam->mDistance, cam->mTargetDistance, 0.99f, deltaTime);
+    // DecayTo(cam->mAngle   , cam->mTargetAngle   , 0.99f, deltaTime);
+    // DecayTo(cam->mTilt    , cam->mTargetTilt    , 0.99f, deltaTime);
+
+    //glm::vec4 toPos = glm::rotate(glm::mat4(1.0f), -cam->mTilt, right) * forward4;
+    //transform->mPosition = cam->mCenter - cam->mDistance * glm::normalize(glm::vec3(toPos.x, toPos.y, toPos.z));
+    
+    if (mInputState.mouseButtonDown[SDL_BUTTON_LEFT]) {
+        if (mInputState.mouseDragging) {
+            if (mInputState.altKeyDown) {
+                glm::vec2 mouseDelta = mInputState.mouseDelta * deltaTime * 5.0f;
+                glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(mouseDelta.x), upDir);
+                rotationMatrix = glm::rotate(rotationMatrix, glm::radians(mouseDelta.y), rightDir);
+                // create direction vector from rotationMatrix
+                glm::vec4 forward4 = rotationMatrix * glm::vec4(0.0f, 0.0f, -1.0f, 1.0f);
+                glm::vec3 forward = glm::vec3(forward4.x, forward4.y, forward4.z);
+    
+                //float yaw = transform->mRotation.y;
+                //glm::vec3 forwardDir{glm::sin(yaw), 0.0f, glm::cos(yaw)};
+                //glm::vec3 rightDir(forwardDir.z, 0.0f, -forwardDir.x);
+                //glm::vec3 upDir(cam->mUp);
+    
+                glm::vec3 orbitPos =  cam->mCenter - (forward * cam->mDistance);
+                transform->mPosition = orbitPos;
+            }
+        }
+    }
+    else if (mInputState.mouseButtonDown[SDL_BUTTON_RIGHT]) {
+        glm::vec2 mouseDelta = mInputState.mouseDelta * deltaTime * 5.0f;
+        if (mInputState.altKeyDown) {
+            transform->mPosition.x -= mouseDelta.x;
+            transform->mPosition.y += mouseDelta.y;
+        }
+        else {
+            transform->mRotation.x += mouseDelta.y;
+            transform->mRotation.y += mouseDelta.x;
+        }
+    }
+}
+
+template<typename T>
+void Engine::DecayTo(T& value, T target, float rate, float deltaTime) {
+    // Decay to target value using exponential decay
+
+    value = value + (target - value) * (1.0f - glm::pow(rate, 1000.0f * deltaTime));
 }

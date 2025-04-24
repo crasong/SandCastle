@@ -79,6 +79,17 @@ public:
     void Update(float deltaTime) override;
     void Shutdown() override {}
 private:
+    static void SetOrthographicProjection(CameraComponent& outCamera,
+        const float left, const float right, const float bottom, const float top, const float nearPlane, const float farPlane);
+    static void SetPerspectiveProjection(CameraComponent& outCamera,
+        const float fovY, const float aspectRatio, const float nearPlane, const float farPlane);
+    static void SetViewDirection(CameraComponent& outCamera,
+        const glm::vec3 position, const glm::vec3 direction, const glm::vec3 up = {0.0f, -1.0f, 0.0f});
+    static void SetViewTarget(CameraComponent& outCamera,
+        const glm::vec3 position, const glm::vec3 target, const glm::vec3 up = {0.0f, -1.0f, 0.0f});
+    static void SetViewYXZ(CameraComponent& outCamera,
+        const glm::vec3 position, const glm::vec3 rotation);
+
     Renderer* mRenderer = nullptr;
     std::vector<CameraNode> mCameraNodes;
 };

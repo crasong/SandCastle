@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
+class CameraNode;
 class Entity;
 class ISystem;
 
@@ -30,12 +31,17 @@ public:
 
     void AddEntity(Entity* entity);
 
+    template<typename T>
+    void DecayTo(T& value, T target, float rate, float deltaTime);
+
 private:
     void PollEvents();
     void ProcessEvent(const SDL_KeyboardEvent& event);
     void ProcessEvent(const SDL_MouseMotionEvent& event);
     void ProcessEvent(const SDL_MouseButtonEvent& event);
     void ProcessEvent(const SDL_WindowEvent& event);
+
+    void ProcessCameraInput(const float deltaTime, CameraNode* camera);
     
 private:
     Renderer mRenderer;

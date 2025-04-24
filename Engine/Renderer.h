@@ -80,9 +80,14 @@ public:
     void CycleSampler();
     void IncreaseScale();
     void DecreaseScale();
-    void ProcessCameraInput(const InputState& inputState, const float deltaTime);
 
     void SetCameraEntity(CameraNode* cameraNode);
+    CameraNode* GetCameraEntity() const {
+        if (mCameraNodes.size() > 0) {
+            return mCameraNodes[0];
+        }
+        return nullptr;
+    }
     void SubmitNode(RenderNode* node) {
         mNodesThisFrame.push_back(node);
     }
