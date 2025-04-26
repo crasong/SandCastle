@@ -35,31 +35,6 @@ public:
         glm::vec2 size = {0, 0};
     };
 
-    struct PositionTextureVertex {
-        glm::vec3 position = {0, 0, 0};
-        glm::vec2 uv = {0, 0};
-    };
-
-    struct MeshTexture {
-        SDL_GPUTexture* texture = nullptr;
-        aiTextureType type = aiTextureType_NONE;
-    };
-
-    struct Mesh {
-        glm::vec3 mRootPosition = {0.0f, 0.0f, 0.0f}; // Base position in local space
-        glm::vec3 mRootOrientation = {0.0f, 0.0f, 0.0f}; // Base orientation in degrees
-        glm::vec3 mRootScale = {1.0f, 1.0f, 1.0f};
-        std::vector<PositionTextureVertex> vertices;
-        std::vector<Uint32> indices;
-        uint8_t samplerTypeIndex = 0;
-        SDL_GPUBuffer* vertexBuffer = nullptr;
-        SDL_GPUBuffer* indexBuffer = nullptr;
-        //std::unordered_map<aiTextureType, SDL_GPUTexture*> textureMap;
-        std::unordered_map<std::string, MeshTexture> textureIdMap;
-        std::string filepath;
-        bool bDoNotRender = false;
-    };
-
     struct TextureLoadingContext {
         aiTextureType          type = aiTextureType_NONE;
         std::string            filename;
@@ -70,12 +45,7 @@ public:
 
     struct MeshLoadingContext {
         // Texture info
-        std::unordered_map<std::string, TextureLoadingContext>  textureInfoMap;
-        //std::vector<aiTextureType>          textureType;
-        //std::set<std::string>               textureFilenames;
-        //std::vector<SDL_GPUTexture*>        textures;
-        //std::vector<SDL_GPUTransferBuffer*> textureTransferBuffers;
-        //std::vector<SDL_Surface*>           textureImages;
+        std::unordered_map<std::string, TextureLoadingContext> textureInfoMap;
 
         // Material info
         bool bUseMetallic  = false;
@@ -177,10 +147,10 @@ private:
     SDL_Surface* LoadImage(const ModelDescriptor& modelDescriptor, int desiredChannels = 0);
     SDL_Surface* LoadImage(const std::string& foldername, const std::string& subfoldername, const std::string& texturename, int desiredChannels = 0);
     SDL_Surface* LoadImageShared(SDL_Surface* image, int desiredChannels = 0);
-    bool LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh& outMesh, MeshLoadingContext& outContext);
-    void ParseVertices(const aiScene* scene, const bool flipX, const bool flipY, const bool flipZ, Renderer::Mesh& outMesh, MeshLoadingContext& outContext);
-    void ParseMaterials(const aiScene* scene, Renderer::Mesh& outMesh, MeshLoadingContext& outContext);
-    void ParseTextures(const aiScene* scene, Renderer::Mesh& outMesh, MeshLoadingContext& outContext);
+    bool LoadModel(const ModelDescriptor& modelDescriptor, Mesh& outMesh, MeshLoadingContext& outContext);
+    void ParseVertices(const aiScene* scene, const bool flipX, const bool flipY, const bool flipZ, Mesh& outMesh, MeshLoadingContext& outContext);
+    void ParseMaterials(const aiScene* scene, Mesh& outMesh, MeshLoadingContext& outContext);
+    void ParseTextures(const aiScene* scene, Mesh& outMesh, MeshLoadingContext& outContext);
     
 private:
     SDL_Window* mWindow = nullptr;

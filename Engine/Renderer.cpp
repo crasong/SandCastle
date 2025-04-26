@@ -48,7 +48,7 @@ static std::vector<Renderer::ModelDescriptor> Models =
     {"DamagedHelmet", GLTF_EMBEDDED_PATH, GLTF_EMBEDDED_EXT, "", 1, false, false, false},
     {"SciFiHelmet", GLTF_PATH, GLTF_EXT, "", 1, false, false, false},
 };
-static std::vector<Renderer::PositionTextureVertex> s_GridVertices = {
+static std::vector<PositionTextureVertex> s_GridVertices = {
     {{-0.5f, 0.0f, -0.5f}, {0.0f, 0.0f}},
     {{0.5f, 0.0f, -0.5f}, {1.0f, 0.0f}},
     {{-0.5f, 0.0f, 0.5f}, {0.0f, 1.0f}},
@@ -663,7 +663,7 @@ SDL_Surface* Renderer::LoadImageShared(SDL_Surface* image, int desiredChannels) 
     return image;
 }
 
-bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh& outMesh, MeshLoadingContext& outContext) {
+bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Mesh& outMesh, MeshLoadingContext& outContext) {
     // Construct the full path
     std::filesystem::path modelPath = std::format("{}Content/Models/{}/{}/{}{}", BasePath, modelDescriptor.foldername, modelDescriptor.subFoldername, modelDescriptor.foldername, modelDescriptor.fileExtension);
     std::string modelPathString = modelPath.make_preferred().string();
@@ -684,7 +684,7 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh&
     return true;
 }
 
-void Renderer::ParseVertices(const aiScene* scene, const bool flipX, const bool flipY, const bool flipZ, Renderer::Mesh& outMesh, MeshLoadingContext& outContext) {
+void Renderer::ParseVertices(const aiScene* scene, const bool flipX, const bool flipY, const bool flipZ, Mesh& outMesh, MeshLoadingContext& outContext) {
     const float xMod = flipX ? -1.0f : 1.0f;
     const float yMod = flipY ? -1.0f : 1.0f;
     const float zMod = flipZ ? -1.0f : 1.0f;
@@ -718,7 +718,7 @@ void Renderer::ParseVertices(const aiScene* scene, const bool flipX, const bool 
     }
 }
 
-void Renderer::ParseMaterials(const aiScene* scene, Renderer::Mesh& outMesh, MeshLoadingContext& outContext) {
+void Renderer::ParseMaterials(const aiScene* scene, Mesh& outMesh, MeshLoadingContext& outContext) {
     const bool bIsBinary = (scene->mNumTextures > 0);
     for (size_t i = 0; i < scene->mNumMaterials; ++i) {
         auto material = scene->mMaterials[i];
@@ -736,7 +736,7 @@ void Renderer::ParseMaterials(const aiScene* scene, Renderer::Mesh& outMesh, Mes
     }
 }
 
-void Renderer::ParseTextures(const aiScene* scene, Renderer::Mesh& outMesh, MeshLoadingContext& outContext) {
+void Renderer::ParseTextures(const aiScene* scene, Mesh& outMesh, MeshLoadingContext& outContext) {
     const bool bIsBinary = (scene->mNumTextures > 0);
     for (size_t i = 0; i < scene->mNumMaterials; ++i) {
         auto material = scene->mMaterials[i];
@@ -878,7 +878,7 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
     for (auto& node : mNodesThisFrame) {
         if (!node->mDisplay->mShow) continue;
         
-        const Renderer::Mesh& mesh = *(node->mDisplay->mMesh);
+        const Mesh& mesh = *(node->mDisplay->mMesh);
         const TransformComponent& transform = *(node->mTransform);
         SDL_GPUTexture* diffuseTexture = GetTexture(mesh, aiTextureType_BASE_COLOR);
         SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);

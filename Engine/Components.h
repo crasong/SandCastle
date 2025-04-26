@@ -57,12 +57,12 @@ public:
 class DisplayComponent : public Component{
 public:
     DisplayComponent() = default;
-    explicit DisplayComponent(Renderer::Mesh* mesh) : mMesh(mesh) {}
+    explicit DisplayComponent(Mesh* mesh) : mMesh(mesh) {}
 
     void BeginFrame() override;
 
     bool mShow = true;
-    Renderer::Mesh* mMesh = nullptr;
+    Mesh* mMesh = nullptr;
 private:
     void DisplaySceneDetails();
     Assimp::Importer importer;
