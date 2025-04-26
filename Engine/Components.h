@@ -1,5 +1,7 @@
 #pragma once
 
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
 #include <functional>
 #include <glm/ext/quaternion_common.hpp>
 #include <glm/glm.hpp>
@@ -61,6 +63,10 @@ public:
 
     bool mShow = true;
     Renderer::Mesh* mMesh = nullptr;
+private:
+    void DisplaySceneDetails();
+    Assimp::Importer importer;
+    const aiScene* scene = nullptr;
 };
 
 class CameraComponent : public Component{

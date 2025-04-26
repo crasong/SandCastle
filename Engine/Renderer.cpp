@@ -4,15 +4,30 @@
 #include <assimp/mesh.h>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
+#include <filesystem>
 #include <fstream>
 #include <glm/gtc/matrix_transform.hpp>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_sdlgpu3.h>
+#include <memory>
 #include <Nodes.h>
 #include <SDL3/SDL_vulkan.h>
 #include <SDL3_image/SDL_image.h>
 #include <span>
 #include <UIManager.h>
+
+// defines
+#define MODEL_PATH "Content/Models/"
+#define IMAGE_PATH "Content/Images/"
+#define SHADER_PATH "Content/Shaders/Compiled/"
+#define EMPTY_PATH ""
+#define GLTF_PATH "glTF"
+#define GLTF_EXT ".gltf"
+#define GLTF_EMBEDDED_PATH "glTF-Embedded"
+#define GLTF_EMBEDDED_EXT ".gltf"
+#define GLTF_BINARY_PATH "glTF-Binary"
+#define GLTF_BINARY_EXT ".glb"
+#define OBJ_EXT ".obj"
 
 // statics
 static std::string BasePath;
@@ -27,9 +42,10 @@ static std::vector<std::string> SamplerNames =
 };
 static std::vector<Renderer::ModelDescriptor> Models = 
 {
-    {"viking_room", "viking_room.obj", "viking_room.png", 0, false, false, false},
-    {"DamagedHelmet", "DamagedHelmet.gltf", "Default_albedo.jpg", 1, false, false, false},
-    {"SciFiHelmet", "SciFiHelmet.gltf", "SciFiHelmet_BaseColor.png", 1, false, false, false},
+    //{"viking_room", EMPTY_PATH, OBJ_EXT, "viking_room.png", 0, false, false, false},
+    //{"DamagedHelmet", GLTF_PATH, GLTF_EXT, "Default_albedo.jpg", 1, false, false, false},
+    {"DamagedHelmet", GLTF_EMBEDDED_PATH, GLTF_EMBEDDED_EXT, "", 1, false, false, false},
+    {"SciFiHelmet", GLTF_PATH, GLTF_EXT, "SciFiHelmet_BaseColor.png", 1, false, false, false},
 };
 static std::vector<Renderer::PositionTextureVertex> s_GridVertices = {
     {{-0.5f, 0.0f, -0.5f}, {0.0f, 0.0f}},
@@ -87,7 +103,8 @@ bool Renderer::Init(const char* title, int width, int height) {
 }
 
 void Renderer::InitAssetLoader() {
-    BasePath = SDL_GetBasePath();
+    std::filesystem::path basePath = SDL_GetBasePath();
+    BasePath = basePath.make_preferred().string() ;
 }
 
 bool Renderer::InitPipelines() {
@@ -360,24 +377,45 @@ void Renderer::InitMeshes() {
 }
 
 bool Renderer::InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh) {
-    
+    MeshLoadingContext context{};
+    // Load the model
+    if (!LoadModel(modelDescriptor, mesh, context)) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s", SDL_GetError());
+        return false;
+    }
     // Create Mesh resources
     SDL_GPUBufferCreateInfo vertexBufferCreateInfo{};
     SDL_GPUTransferBuffer* vertexTransferBuffer = nullptr;
     SDL_GPUBufferCreateInfo indexBufferCreateInfo{};
     SDL_GPUTransferBuffer* indexTransferBuffer = nullptr;
-    if (!CreateModelGPUResources(modelDescriptor, mesh, vertexBufferCreateInfo, vertexTransferBuffer, indexBufferCreateInfo, indexTransferBuffer)) {
+    if (!CreateModelGPUResources(mesh, vertexBufferCreateInfo, vertexTransferBuffer, indexBufferCreateInfo, indexTransferBuffer)) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create model GPU resources");
         return false;
     }
-    // Create Texture resources
-    SDL_Surface* imageData = nullptr;
-    SDL_GPUTextureCreateInfo colorTextureCreateInfo{};
-    SDL_GPUTransferBuffer* textureTransferBuffer = nullptr;
-    if (!CreateTextureGPUResources(modelDescriptor, mesh, imageData, colorTextureCreateInfo, textureTransferBuffer)) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create texture GPU resources");
-        return false;
+
+    // Check if we still need to load the texture files
+    if (context.textureImages.size() == 0) {
+        for (const std::string filename : context.textureFilenames) {
+            if (SDL_Surface* imageData = LoadImage(modelDescriptor.foldername, filename, 4)) {
+                context.textureImages.push_back(imageData);
+            }
+        }
+        SDL_assert(context.textureImages.size() == context.textureFilenames.size());
     }
+
+    // Create Texture resources
+    for (size_t i = 0; i < context.textureImages.size(); ++i) {
+        SDL_GPUTextureCreateInfo colorTextureCreateInfo{};
+        SDL_GPUTransferBuffer* textureTransferBuffer = nullptr;
+        SDL_GPUTexture* texture = nullptr;
+        if (!CreateTextureGPUResources(context.textureImages[i], context.textureFilenames[i], texture, colorTextureCreateInfo, textureTransferBuffer)) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create texture GPU resources");
+            return false;
+        }
+        context.textureTransferBuffers.push_back(textureTransferBuffer);
+        context.textures.push_back(texture);
+    }
+    SDL_assert(context.textureImages.size() == context.textures.size());
 
     // Upload the transfer data to the vertex buffer
     SDL_GPUCommandBuffer* uploadCmdBuff = SDL_AcquireGPUCommandBuffer(mSDLDevice);
@@ -393,34 +431,35 @@ bool Renderer::InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh) {
         SDL_UploadToGPUBuffer(copyPass, &transferBufferLocation, &bufferRegion, false);
     }
     {   // upload texture data
-        SDL_GPUTextureTransferInfo textureTransferInfo{ .transfer_buffer = textureTransferBuffer, .offset = 0 };
-        SDL_GPUTextureRegion textureRegion{ .texture = mesh.colorTexture, .w = static_cast<Uint32>(imageData->w), .h = static_cast<Uint32>(imageData->h), .d = 1 };
-        SDL_UploadToGPUTexture(copyPass, &textureTransferInfo, &textureRegion, false);
+        for (size_t i = 0; i < context.textureImages.size(); ++i) {
+            SDL_Surface* imageData = context.textureImages[i];
+            SDL_GPUTextureTransferInfo textureTransferInfo{ .transfer_buffer = context.textureTransferBuffers[i], .offset = 0 };
+            SDL_GPUTextureRegion textureRegion{ .texture = context.textures[i], .w = static_cast<Uint32>(imageData->w), .h = static_cast<Uint32>(imageData->h), .d = 1 };
+            SDL_UploadToGPUTexture(copyPass, &textureTransferInfo, &textureRegion, false);
+            mesh.textureMap[context.textureType[i]] = context.textures[i];
+            context.textures[i] = nullptr;
+        }
     }
 
     SDL_EndGPUCopyPass(copyPass);
     SDL_SubmitGPUCommandBuffer(uploadCmdBuff);
 
-    SDL_DestroySurface(imageData);
     SDL_ReleaseGPUTransferBuffer(mSDLDevice, vertexTransferBuffer);
     SDL_ReleaseGPUTransferBuffer(mSDLDevice, indexTransferBuffer);
-    SDL_ReleaseGPUTransferBuffer(mSDLDevice, textureTransferBuffer);
+    for (size_t i = 0; i < context.textureImages.size(); ++i) {
+        SDL_DestroySurface(context.textureImages[i]);
+        SDL_ReleaseGPUTransferBuffer(mSDLDevice, context.textureTransferBuffers[i]);
+    }
     return true;
 }
 
 bool Renderer::CreateModelGPUResources(
-    const ModelDescriptor& modelDescriptor,
-    Mesh& mesh,
-    SDL_GPUBufferCreateInfo& vertexBufferCreateInfo,
-    SDL_GPUTransferBuffer*& vertexTransferBuffer,
-    SDL_GPUBufferCreateInfo& indexBufferCreateInfo,
-    SDL_GPUTransferBuffer*& indexTransferBuffer) {
+        Mesh& mesh,
+        SDL_GPUBufferCreateInfo& vertexBufferCreateInfo,
+        SDL_GPUTransferBuffer*& vertexTransferBuffer,
+        SDL_GPUBufferCreateInfo& indexBufferCreateInfo,
+        SDL_GPUTransferBuffer*& indexTransferBuffer) {
     
-    // Load the model
-    if (!LoadModel(modelDescriptor, mesh)) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s", SDL_GetError());
-        return false;
-    }
     // Create GPU resources
     vertexBufferCreateInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
     vertexBufferCreateInfo.size = static_cast<Uint32>(mesh.vertices.size() * sizeof(PositionTextureVertex));
@@ -479,22 +518,14 @@ bool Renderer::CreateModelGPUResources(
     return true;
 }
 
-
 bool Renderer::CreateTextureGPUResources(
-    const ModelDescriptor& modelDescriptor,
-    Mesh& mesh,
-    SDL_Surface*& imageData,
-    SDL_GPUTextureCreateInfo& textureCreateInfo,
-    SDL_GPUTransferBuffer*& textureTransferBuffer) {
+        const SDL_Surface* imageData,
+        const std::string textureName,
+        SDL_GPUTexture*& outTexture,
+        SDL_GPUTextureCreateInfo& outCreateInfo,
+        SDL_GPUTransferBuffer*& outTransferBuffer) {
 
-    // Load the image
-    imageData = LoadImage(modelDescriptor, 4);
-    if (!imageData) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load image: %s", SDL_GetError());
-        return false;
-    }
-
-    textureCreateInfo = SDL_GPUTextureCreateInfo{
+    outCreateInfo = SDL_GPUTextureCreateInfo{
         .type = SDL_GPU_TEXTURETYPE_2D,
         .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
         .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
@@ -503,20 +534,20 @@ bool Renderer::CreateTextureGPUResources(
         .layer_count_or_depth = 1,
         .num_levels = 1,
     };
-    mesh.colorTexture = SDL_CreateGPUTexture(mSDLDevice, &textureCreateInfo);
-    if (!mesh.colorTexture) {
+    outTexture = SDL_CreateGPUTexture(mSDLDevice, &outCreateInfo);
+    if (!outTexture) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create texture: %s", SDL_GetError());
         return false;
     }
-    SDL_SetGPUTextureName(mSDLDevice, mesh.colorTexture, modelDescriptor.textureFilename.c_str());
+    SDL_SetGPUTextureName(mSDLDevice, outTexture, textureName.c_str());
 
     // Set the texture data
     SDL_GPUTransferBufferCreateInfo textureTransferBufferCreateInfo{
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
         .size = static_cast<Uint32>(imageData->h * imageData->w * 4),
     };
-    textureTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &textureTransferBufferCreateInfo);
-    void* textureDataPtr = static_cast<Uint8*>(SDL_MapGPUTransferBuffer(mSDLDevice, textureTransferBuffer, false));
+    outTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &textureTransferBufferCreateInfo);
+    void* textureDataPtr = static_cast<Uint8*>(SDL_MapGPUTransferBuffer(mSDLDevice, outTransferBuffer, false));
     if (!textureDataPtr) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to map GPU transfer buffer data pointer for texture");
         return false;
@@ -524,19 +555,9 @@ bool Renderer::CreateTextureGPUResources(
     else {
         SDL_memcpy(textureDataPtr, imageData->pixels, textureTransferBufferCreateInfo.size);
     }
-    SDL_UnmapGPUTransferBuffer(mSDLDevice, textureTransferBuffer);
+    SDL_UnmapGPUTransferBuffer(mSDLDevice, outTransferBuffer);
     
     return true;
-}
-
-std::string Renderer::GetFolderName(const std::string& filename) const {
-    auto it = std::find_if(Models.begin(), Models.end(), [&filename](const ModelDescriptor& model) {
-        return model.meshFilename == filename || model.textureFilename == filename;
-    });
-    if (it != Models.end()) {
-        return it->foldername;
-    }
-    return std::string{};
 }
 
 SDL_GPUShader* Renderer::LoadShader(
@@ -614,9 +635,17 @@ SDL_GPUShader* Renderer::LoadShader(
 }
 
 SDL_Surface* Renderer::LoadImage(const ModelDescriptor& modelDescriptor, int desiredChannels) {
+    return LoadImage(modelDescriptor.foldername, modelDescriptor.textureFilename, desiredChannels);
+}
+
+SDL_Surface* Renderer::LoadImage(const std::string& foldername, const std::string& texturename, int desiredChannels) {
     // Construct the full path
-    std::string fullPath = std::format("{}/Content/Models/{}/{}", BasePath, modelDescriptor.foldername, modelDescriptor.textureFilename);
+    std::string fullPath = std::format("{}/Content/Models/{}/{}", BasePath, foldername, texturename);
     SDL_Surface* image = IMG_Load(fullPath.c_str());
+    return LoadImageShared(image, desiredChannels);
+}
+
+SDL_Surface* Renderer::LoadImageShared(SDL_Surface* image, int desiredChannels) {
     SDL_PixelFormat format = SDL_PIXELFORMAT_UNKNOWN;
     if (!image) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load image: %s", SDL_GetError());
@@ -643,16 +672,18 @@ SDL_Surface* Renderer::LoadImage(const ModelDescriptor& modelDescriptor, int des
     return image;
 }
 
-bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh & outMesh) {
+bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh& outMesh, MeshLoadingContext& outContext) {
     // Construct the full path
-    std::string modelFullPath = std::format("{}/Content/Models/{}/{}", BasePath, modelDescriptor.foldername, modelDescriptor.meshFilename);
+    std::filesystem::path modelPath = std::format("{}Content/Models/{}/{}/{}{}", BasePath, modelDescriptor.foldername, modelDescriptor.subFoldername, modelDescriptor.foldername, modelDescriptor.fileExtension);
+    std::string modelPathString = modelPath.make_preferred().string();
     // Load the model
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(modelFullPath, aiProcess_Triangulate | aiProcess_PreTransformVertices | aiProcess_FlipUVs);
+    const aiScene* scene = importer.ReadFile(modelPathString, aiProcess_Triangulate | aiProcess_PreTransformVertices | aiProcess_FlipUVs);
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->HasMeshes()) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s \nmodel filepath: %s", importer.GetErrorString(), modelFullPath.c_str());
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s \nmodel filepath: %s", importer.GetErrorString(), modelPathString.c_str());
         return false;
     }
+    const bool bIsBinary = (scene->mNumTextures > 0);
     const float xMod = modelDescriptor.flipX ? -1.0f : 1.0f;
     const float yMod = modelDescriptor.flipY ? -1.0f : 1.0f;
     const float zMod = modelDescriptor.flipZ ? -1.0f : 1.0f;
@@ -684,7 +715,45 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh 
             }
         }
     }
+    for (size_t i = 0; i < scene->mNumMaterials; ++i) {
+        auto material = scene->mMaterials[i];
+        if (material) {
+            for (size_t j = 0; j < AI_TEXTURE_TYPE_MAX; ++j) {
+                const aiTextureType type = (aiTextureType)j;
+                const bool bHasTexture = (material->GetTextureCount(type) > 0);
+                aiString texturePath;
+                if (bHasTexture && (material->GetTexture(type, 0, &texturePath) == AI_SUCCESS)) {
+                    outContext.textureFilenames.push_back(texturePath.C_Str());
+                    outContext.textureType.push_back(type);
+                    outMesh.textureMap[type] = nullptr;
+                    // If the file is binary, we'll need to load the imageData in place
+                    // Otherwise the file memory gets cleaned up with the Importer
+                    // I could move the Importer to the MeshLoadingContext, then
+                    // I'd be able to parse the scene for this information later on.
+                    if (bIsBinary) {
+                        auto texture = scene->GetEmbeddedTexture(texturePath.C_Str());
+                        if (texture) {
+                            const size_t texSize = (texture->mHeight == 0) ? texture->mWidth : texture->mWidth * texture->mHeight;
+                            SDL_IOStream* ioStream = SDL_IOFromMem(texture->pcData, texSize);
+                            if (ioStream) {
+                                SDL_Surface* image = IMG_LoadTyped_IO(ioStream, true, texture->achFormatHint);
+                                image = LoadImageShared(image, 4);
+                                if (image) {
+                                    outContext.textureImages.push_back(image);
+                                }
+                            }
+                        }
+                    }
+                }
+                // for (size_t k = 0; k < texCount; ++k){
+                // }
+            }
+        }
+    }
+    SDL_assert(outMesh.textureMap.size() == outContext.textureType.size());
     outMesh.samplerTypeIndex = modelDescriptor.samplerTypeIndex;
+    outMesh.filepath = modelPathString;
+    outMesh.bDoNotRender = scene->mNumTextures > 0;
     return true;
 }
 
@@ -796,7 +865,7 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
         SDL_BindGPUVertexBuffers(renderPass, 0, bindings.data(), static_cast<Uint32>(bindings.size()));
         SDL_GPUBufferBinding indexBufferBinding{mesh.indexBuffer, 0};
         SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-        SDL_GPUTextureSamplerBinding textureSamplerBinding{mesh.colorTexture, mSamplers[mesh.samplerTypeIndex]};
+        SDL_GPUTextureSamplerBinding textureSamplerBinding{mesh.textureMap.at(aiTextureType_DIFFUSE), mSamplers[mesh.samplerTypeIndex]};
         SDL_BindGPUFragmentSamplers(renderPass, 0, &textureSamplerBinding, 1);
 
         // model matrix
@@ -871,7 +940,10 @@ void Renderer::Shutdown() {
         Mesh& mesh = namedMesh.second;
         if (mesh.vertexBuffer) SDL_ReleaseGPUBuffer(mSDLDevice, mesh.vertexBuffer);
         if (mesh.indexBuffer) SDL_ReleaseGPUBuffer(mSDLDevice, mesh.indexBuffer);
-        if (mesh.colorTexture) SDL_ReleaseGPUTexture(mSDLDevice, mesh.colorTexture);
+        //if (mesh.colorTexture) SDL_ReleaseGPUTexture(mSDLDevice, mesh.colorTexture);
+        for (auto [type, texture] : mesh.textureMap) {
+            if (texture) SDL_ReleaseGPUTexture(mSDLDevice, texture);
+        }
     }
     if (mDepthTexture) SDL_ReleaseGPUTexture(mSDLDevice, mDepthTexture);
     if (mWindow) SDL_DestroyWindow(mWindow);
@@ -879,7 +951,6 @@ void Renderer::Shutdown() {
 
 void Renderer::ResizeWindow() {
     if (mDepthTexture) SDL_ReleaseGPUTexture(mSDLDevice, mDepthTexture);
-    if (mColorTexture) SDL_ReleaseGPUTexture(mSDLDevice, mColorTexture);
     int windowWidth, windowHeight;
     if (!SDL_GetWindowSize(mWindow, &windowWidth, &windowHeight)) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_GetWindowSize failed: %s", SDL_GetError());
@@ -895,8 +966,6 @@ void Renderer::ResizeWindow() {
         .num_levels = 1,
         .sample_count = SDL_GPU_SAMPLECOUNT_1,
     };
-    mColorTexture = SDL_CreateGPUTexture(mSDLDevice, &colorTextureCreateInfo);
-    SDL_SetGPUTextureName(mSDLDevice, mColorTexture, "Color Texture");
 
     SDL_GPUTextureCreateInfo depthTextureCreateInfo{
         .type = SDL_GPU_TEXTURETYPE_2D,

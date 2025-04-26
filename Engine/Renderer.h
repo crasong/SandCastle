@@ -1,5 +1,6 @@
 #pragma once
 
+#include <assimp/material.h>
 #include <glm/glm.hpp>
 #include <Input.h>
 #include <Render/RenderStructs.h>
@@ -9,6 +10,7 @@
 #include <vector>
 #include <unordered_map>
 
+struct aiScene;
 class CameraNode;
 class RenderNode;
 class UIManager;
@@ -46,12 +48,24 @@ public:
         uint8_t samplerTypeIndex = 0;
         SDL_GPUBuffer* vertexBuffer = nullptr;
         SDL_GPUBuffer* indexBuffer = nullptr;
-        SDL_GPUTexture* colorTexture = nullptr;
+        std::unordered_map<aiTextureType, SDL_GPUTexture*> textureMap;
+        std::string filepath;
+        bool bDoNotRender = false;
+    };
+
+    struct MeshLoadingContext {
+        // textures
+        std::vector<aiTextureType>          textureType;
+        std::vector<std::string>            textureFilenames;
+        std::vector<SDL_GPUTexture*>        textures;
+        std::vector<SDL_GPUTransferBuffer*> textureTransferBuffers;
+        std::vector<SDL_Surface*>           textureImages;
     };
 
     struct ModelDescriptor {
         std::string foldername;
-        std::string meshFilename;
+        std::string subFoldername;
+        std::string fileExtension;
         std::string textureFilename;
         uint8_t samplerTypeIndex = 0;
         bool flipX = false;
@@ -109,7 +123,6 @@ private:
     void EndRenderPass(RenderPassContext& context);
 
     bool CreateModelGPUResources(
-        const ModelDescriptor& modelDescriptor,
         Mesh& mesh,
         SDL_GPUBufferCreateInfo& vertexBufferCreateInfo,
         SDL_GPUTransferBuffer*& vertexTransferBuffer,
@@ -117,14 +130,12 @@ private:
         SDL_GPUTransferBuffer*& indexTransferBuffer
     );
     bool CreateTextureGPUResources(
-        const ModelDescriptor& modelDescriptor,
-        Mesh& mesh,
-        SDL_Surface*& imageData,
-        SDL_GPUTextureCreateInfo& textureCreateInfo,
-        SDL_GPUTransferBuffer*& textureTransferBuffer
+        const SDL_Surface* imageData,
+        const std::string textureName,
+        SDL_GPUTexture*& outTexture,
+        SDL_GPUTextureCreateInfo& outCreateInfo,
+        SDL_GPUTransferBuffer*& outTransferBuffer
     );
-
-    std::string GetFolderName(const std::string& filename) const;
 
     SDL_GPUShader* LoadShader(
         SDL_GPUDevice* device,
@@ -134,12 +145,13 @@ private:
         const Uint32 storageBufferCount,
         const Uint32 storageTextureCount);
     SDL_Surface* LoadImage(const ModelDescriptor& modelDescriptor, int desiredChannels = 0);
-    bool LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh& outMesh);
+    SDL_Surface* LoadImage(const std::string& foldername, const std::string& texturename, int desiredChannels = 0);
+    SDL_Surface* LoadImageShared(SDL_Surface* image, int desiredChannels = 0);
+    bool LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh& outMesh, MeshLoadingContext& outContext);
     
 private:
     SDL_Window* mWindow = nullptr;
     SDL_GPUDevice* mSDLDevice = nullptr;
-    SDL_GPUTexture* mColorTexture = nullptr;
     SDL_GPUTexture* mDepthTexture = nullptr;
     
     std::vector<SDL_GPUSampler*> mSamplers;
@@ -150,10 +162,6 @@ private:
 
     std::vector<CameraNode*> mCameraNodes;
     std::vector<RenderNode*> mNodesThisFrame;
-
-    //SDL_GPUCommandBuffer* mCommandBuffer = nullptr;
-    //SDL_GPUTexture* mSwapchainTexture = nullptr;
-    //SDL_GPURenderPass* mRenderPass = nullptr;
 
     Uint8 mCurrentSamplerIndex = 0;
     RenderMode mRenderMode = RenderMode::Fill;

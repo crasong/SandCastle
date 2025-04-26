@@ -1,7 +1,10 @@
 #include "Components.h"
 
+#include <assimp/mesh.h>
+#include <assimp/postprocess.h>
 #include <Entity.h>
 #include <imgui.h>
+#include <string>
 
 void TransformComponent::BeginFrame() {
     // Display position, rotation, and scale in the imgui UI as editable fields
@@ -24,7 +27,78 @@ void DisplayComponent::BeginFrame() {
         ImGui::Text("\tVertices: %i", mMesh->vertices.size());
         ImGui::Text("\tIndices: %i", mMesh->indices.size());
         ImGui::Checkbox("Show", &mShow);
+        if (ImGui::TreeNode("aiScene")) {
+            DisplaySceneDetails();
+            ImGui::TreePop();
+        }
     }
+}
+void DisplayComponent::DisplaySceneDetails() {
+    if (!scene) {
+        scene = importer.ReadFile(mMesh->filepath, aiProcess_Triangulate | aiProcess_PreTransformVertices | aiProcess_FlipUVs);
+    }
+
+    const bool bIsBinary = scene->mNumTextures > 0;
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_HorizontalScrollbar
+                                    | ImGuiWindowFlags_AlwaysVerticalScrollbar;
+    ImGuiChildFlags child_flags = ImGuiChildFlags_Border;
+
+    ImGui::BeginChild("Scene Details", ImVec2(ImGui::GetContentRegionAvail().x, 300), child_flags, window_flags);
+    if (ImGui::TreeNode("meshes")) {
+        for (size_t i = 0; i < scene->mNumMeshes; ++i) {
+            auto mesh = scene->mMeshes[i];
+            if (mesh){
+                ImGui::Text("name: %s, materialIdx: %i, verts: %i"
+                    , mesh->mName.C_Str(), mesh->mMaterialIndex, mesh->mNumVertices);
+            }
+            else {
+                ImGui::Text("NULL");
+            }
+        }
+        ImGui::TreePop();
+    }
+    if (ImGui::TreeNode("materials")) {
+        for (size_t i = 0; i < scene->mNumMaterials; ++i) {
+            auto material = scene->mMaterials[i];
+            if (material) {
+                ImGui::Text("name: %s", material->GetName().C_Str());
+                for (size_t j = 0; j < AI_TEXTURE_TYPE_MAX; ++j) {
+                    const aiTextureType type = (aiTextureType)j;
+                    const uint8_t texCount = material->GetTextureCount(type);
+                    for (size_t k = 0; k < texCount; ++k){
+                        aiString texturePath;
+                        if (material->GetTexture(type, k, &texturePath) == AI_SUCCESS) {
+                            //std::string pathStr(texturePath.C_Str());
+                            //pathStr = pathStr.substr(1, 1);
+                            //int texIdx = std::stoi(pathStr);
+                            ImGui::Text("\t%s\t: [%i] %s", aiTextureTypeToString(type), k, texturePath.C_Str());
+                            if (bIsBinary) {
+                                const aiTexture* texture = scene->GetEmbeddedTexture(texturePath.C_Str());
+                                ImGui::Text("\t\tfilename: %s %s [%i, %i]", texture->mFilename.C_Str(), texture->achFormatHint, texture->mWidth, texture->mHeight);
+                            }
+                        }
+                    }
+                }
+            }
+            else {
+                ImGui::Text("NULL");
+            }
+        }
+        ImGui::TreePop();
+    }
+    if (ImGui::TreeNode("textures")) {
+        for (size_t i = 0; i < scene->mNumTextures; ++i) {
+            auto texture = scene->mTextures[i];
+            if (texture) {
+                ImGui::Text("filename: %s [%i, %i]", texture->mFilename.C_Str(), texture->mWidth, texture->mHeight);
+            }
+            else {
+                ImGui::Text("NULL");
+            }
+        }
+        ImGui::TreePop();
+    }
+    ImGui::EndChild();
 }
 
 void UIComponent::BeginFrame() {
