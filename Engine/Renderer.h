@@ -4,6 +4,7 @@
 #include <glm/glm.hpp>
 #include <Input.h>
 #include <Render/RenderStructs.h>
+#include <set>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gpu.h>
 #include <string>
@@ -39,6 +40,11 @@ public:
         glm::vec2 uv = {0, 0};
     };
 
+    struct MeshTexture {
+        SDL_GPUTexture* texture = nullptr;
+        aiTextureType type = aiTextureType_NONE;
+    };
+
     struct Mesh {
         glm::vec3 mRootPosition = {0.0f, 0.0f, 0.0f}; // Base position in local space
         glm::vec3 mRootOrientation = {0.0f, 0.0f, 0.0f}; // Base orientation in degrees
@@ -48,18 +54,35 @@ public:
         uint8_t samplerTypeIndex = 0;
         SDL_GPUBuffer* vertexBuffer = nullptr;
         SDL_GPUBuffer* indexBuffer = nullptr;
-        std::unordered_map<aiTextureType, SDL_GPUTexture*> textureMap;
+        //std::unordered_map<aiTextureType, SDL_GPUTexture*> textureMap;
+        std::unordered_map<std::string, MeshTexture> textureIdMap;
         std::string filepath;
         bool bDoNotRender = false;
     };
 
+    struct TextureLoadingContext {
+        aiTextureType          type = aiTextureType_NONE;
+        std::string            filename;
+        SDL_Surface*           imageData      = nullptr;
+        SDL_GPUTexture*        texture        = nullptr;
+        SDL_GPUTransferBuffer* transferBuffer = nullptr;
+    };
+
     struct MeshLoadingContext {
-        // textures
-        std::vector<aiTextureType>          textureType;
-        std::vector<std::string>            textureFilenames;
-        std::vector<SDL_GPUTexture*>        textures;
-        std::vector<SDL_GPUTransferBuffer*> textureTransferBuffers;
-        std::vector<SDL_Surface*>           textureImages;
+        // Texture info
+        std::unordered_map<std::string, TextureLoadingContext>  textureInfoMap;
+        //std::vector<aiTextureType>          textureType;
+        //std::set<std::string>               textureFilenames;
+        //std::vector<SDL_GPUTexture*>        textures;
+        //std::vector<SDL_GPUTransferBuffer*> textureTransferBuffers;
+        //std::vector<SDL_Surface*>           textureImages;
+
+        // Material info
+        bool bUseMetallic  = false;
+        bool bUseRoughness = false;
+        float metallicFactor = 0.0f;
+        float roughnessFactor = 0.0f;
+        float anisotropyFactor = 0.0f;
     };
 
     struct ModelDescriptor {
@@ -106,6 +129,14 @@ public:
         mNodesThisFrame.push_back(node);
     }
 
+    // returns nullptr if texture type not found
+    static SDL_GPUTexture* GetTexture(const Mesh& mesh, const aiTextureType type) {
+        for (auto& [filename, meshTexture] : mesh.textureIdMap) {
+            if (meshTexture.type == type) return meshTexture.texture;
+        }
+        return nullptr;
+    }
+
 private:
     void InitAssetLoader();
     bool InitPipelines();
@@ -133,7 +164,6 @@ private:
         const SDL_Surface* imageData,
         const std::string textureName,
         SDL_GPUTexture*& outTexture,
-        SDL_GPUTextureCreateInfo& outCreateInfo,
         SDL_GPUTransferBuffer*& outTransferBuffer
     );
 
@@ -145,9 +175,12 @@ private:
         const Uint32 storageBufferCount,
         const Uint32 storageTextureCount);
     SDL_Surface* LoadImage(const ModelDescriptor& modelDescriptor, int desiredChannels = 0);
-    SDL_Surface* LoadImage(const std::string& foldername, const std::string& texturename, int desiredChannels = 0);
+    SDL_Surface* LoadImage(const std::string& foldername, const std::string& subfoldername, const std::string& texturename, int desiredChannels = 0);
     SDL_Surface* LoadImageShared(SDL_Surface* image, int desiredChannels = 0);
     bool LoadModel(const ModelDescriptor& modelDescriptor, Renderer::Mesh& outMesh, MeshLoadingContext& outContext);
+    void ParseVertices(const aiScene* scene, const bool flipX, const bool flipY, const bool flipZ, Renderer::Mesh& outMesh, MeshLoadingContext& outContext);
+    void ParseMaterials(const aiScene* scene, Renderer::Mesh& outMesh, MeshLoadingContext& outContext);
+    void ParseTextures(const aiScene* scene, Renderer::Mesh& outMesh, MeshLoadingContext& outContext);
     
 private:
     SDL_Window* mWindow = nullptr;

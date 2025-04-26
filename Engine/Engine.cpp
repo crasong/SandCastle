@@ -64,17 +64,16 @@ bool Engine::Init() {
         entity.AddComponent<UIComponent>();
         AddEntity(new Entity(std::move(entity)));
     }
-    // {
-    //     Entity entity("Viking Room");
-    //     entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["viking_room"]);
-    //     entity.AddComponent<TransformComponent>(
-    //         glm::vec3(0.0f, -7.0f, 2.0f), 
-    //         glm::vec3(-90.0f, 90.0f, 0.0f), 
-    //         glm::vec3(15.0f));
-    //     entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
-    //     entity.AddComponent<UIComponent>();
-    //     AddEntity(new Entity(std::move(entity)));
-    // }
+    {
+        Entity entity("Sponza");
+        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["Sponza"]);
+        entity.AddComponent<TransformComponent>(
+            glm::vec3(0.0f, 0.0f, 0.0f), 
+            glm::vec3(0.0f, 0.0f, 0.0f), 
+            glm::vec3(1.0f));
+        entity.AddComponent<UIComponent>();
+        AddEntity(new Entity(std::move(entity)));
+    }
 
     lastTicks = SDL_GetTicks();
     return true;
