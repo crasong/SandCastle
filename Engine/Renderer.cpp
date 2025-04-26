@@ -211,10 +211,16 @@ bool Renderer::InitPipelines() {
     }
 
     // create grid pipeline
-    pipelineCreateInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
-    pipelineCreateInfo.vertex_shader = gridVertShader;
-    pipelineCreateInfo.fragment_shader = gridFragShader;
-    mGridPipeline = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &pipelineCreateInfo);
+    SDL_GPUGraphicsPipelineCreateInfo gridPipelineCreateInfo{};
+    gridPipelineCreateInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+    gridPipelineCreateInfo.vertex_shader = gridVertShader;
+    gridPipelineCreateInfo.fragment_shader = gridFragShader;
+    gridPipelineCreateInfo.target_info = pipelineTargetInfo;
+    gridPipelineCreateInfo.vertex_input_state = vertexInputState;
+    gridPipelineCreateInfo.depth_stencil_state = depthStencilState;
+    gridPipelineCreateInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+    gridPipelineCreateInfo.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+    mGridPipeline = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &gridPipelineCreateInfo);
     if (!mGridPipeline) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Grid' graphics pipeline");
         return false;
@@ -306,61 +312,28 @@ void Renderer::InitGrid() {
     SDL_GPUTransferBuffer* vertexTransferBuffer = nullptr;
     SDL_GPUBufferCreateInfo indexBufferCreateInfo{};
     SDL_GPUTransferBuffer* indexTransferBuffer = nullptr;
-    vertexBufferCreateInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
-    vertexBufferCreateInfo.size = static_cast<Uint32>(mGridMesh.vertices.size() * sizeof(PositionTextureVertex));
-    mGridMesh.vertexBuffer = SDL_CreateGPUBuffer(mSDLDevice, &vertexBufferCreateInfo);
-    if (!mGridMesh.vertexBuffer) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Vertex' buffer");
-        return;
-    }
-    SDL_SetGPUBufferName(mSDLDevice, mGridMesh.vertexBuffer, "Vertex Buffer");
+    CreateModelGPUResources(mGridMesh, vertexBufferCreateInfo, vertexTransferBuffer, indexBufferCreateInfo, indexTransferBuffer);
 
-    indexBufferCreateInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
-    indexBufferCreateInfo.size = static_cast<Uint32>(mGridMesh.indices.size() * sizeof(Uint32));
-    mGridMesh.indexBuffer =  SDL_CreateGPUBuffer(mSDLDevice, &indexBufferCreateInfo);
-    if (!mGridMesh.indexBuffer) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Index' buffer");
-        return;
-    }
-    SDL_SetGPUBufferName(mSDLDevice, mGridMesh.indexBuffer, "Index Buffer");
-
-    SDL_GPUTransferBufferCreateInfo vertexTransferBufferCreateInfo{};
-    vertexTransferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    vertexTransferBufferCreateInfo.size = vertexBufferCreateInfo.size;
-    
-    SDL_GPUTransferBufferCreateInfo indexTransferBufferCreateInfo{};
-    indexTransferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    indexTransferBufferCreateInfo.size = indexBufferCreateInfo.size;
-
-    vertexTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &vertexTransferBufferCreateInfo);
-    if (!vertexTransferBuffer) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create GPU vertex transfer buffer");
-        return;
-    }
-    
-    indexTransferBuffer = SDL_CreateGPUTransferBuffer(mSDLDevice, &indexTransferBufferCreateInfo);
-    if (!indexTransferBuffer) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create GPU index transfer buffer");
-        return;
-    }
-
-    void* vertexBufferDataPtr = SDL_MapGPUTransferBuffer(mSDLDevice, vertexTransferBuffer, false);
-    void* indexBufferDataPtr = SDL_MapGPUTransferBuffer(mSDLDevice, indexTransferBuffer, false);
-    if (!vertexBufferDataPtr || !indexBufferDataPtr) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to map GPU transfer buffer data pointers");
-        return;
-    }
-    else {
-        std::span transferBufferData{ static_cast<PositionTextureVertex*>(vertexBufferDataPtr), mGridMesh.vertices.size()};
-        std::ranges::copy(mGridMesh.vertices, transferBufferData.begin());
-
-        std::span indexBufferData{ static_cast<Uint32*>(indexBufferDataPtr), mGridMesh.indices.size()};
-        std::ranges::copy(mGridMesh.indices, indexBufferData.begin());
-    }
-
-    SDL_UnmapGPUTransferBuffer(mSDLDevice, vertexTransferBuffer);
-    SDL_UnmapGPUTransferBuffer(mSDLDevice, indexTransferBuffer);
     //mMeshes["Grid"] = mGridMesh;
+    // Upload the transfer data to the vertex buffer
+    SDL_GPUCommandBuffer* uploadCmdBuff = SDL_AcquireGPUCommandBuffer(mSDLDevice);
+    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuff);
+    {   // upload vertex data
+        SDL_GPUTransferBufferLocation transferBufferLocation{ vertexTransferBuffer, 0 };
+        SDL_GPUBufferRegion bufferRegion{ mGridMesh.vertexBuffer, 0, vertexBufferCreateInfo.size };
+        SDL_UploadToGPUBuffer(copyPass, &transferBufferLocation, &bufferRegion, false);
+    }
+    {   // upload index data
+        SDL_GPUTransferBufferLocation transferBufferLocation{ indexTransferBuffer, 0 };
+        SDL_GPUBufferRegion bufferRegion{ mGridMesh.indexBuffer, 0, indexBufferCreateInfo.size };
+        SDL_UploadToGPUBuffer(copyPass, &transferBufferLocation, &bufferRegion, false);
+    }
+
+    SDL_EndGPUCopyPass(copyPass);
+    SDL_SubmitGPUCommandBuffer(uploadCmdBuff);
+
+    SDL_ReleaseGPUTransferBuffer(mSDLDevice, vertexTransferBuffer);
+    SDL_ReleaseGPUTransferBuffer(mSDLDevice, indexTransferBuffer);
 }
 
 void Renderer::InitMeshes() {
@@ -794,6 +767,7 @@ void Renderer::Render(UIManager* uiManager) {
     CameraGPU cameraData{};
     InitCameraData(mCameraNodes[0], context.cameraData);
 
+    RecordGridCommands(context);
     RecordModelCommands(context);
     RecordUICommands(context);
 
@@ -825,16 +799,38 @@ void Renderer::InitCameraData(const CameraNode* cameraNode, CameraGPU& outCamera
 }
 
 void Renderer::RecordGridCommands(RenderPassContext& context) {
+    SDL_GPUColorTargetInfo colorTarget{};
+    colorTarget.texture = context.swapchainTexture;
+    colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
+    colorTarget.store_op = SDL_GPU_STOREOP_STORE;
+    colorTarget.layer_or_depth_plane = 0;
+    colorTarget.clear_color = SDL_FColor{0.3f,0.2f,0.2f,1.0f};
+    std::vector<SDL_GPUColorTargetInfo> colorTargets {colorTarget};
+
+    SDL_GPUDepthStencilTargetInfo depthStencilTarget{};
+    depthStencilTarget.texture = mDepthTexture;
+    depthStencilTarget.clear_depth = 1.0f;
+    depthStencilTarget.load_op = SDL_GPU_LOADOP_CLEAR;
+    depthStencilTarget.store_op = SDL_GPU_STOREOP_STORE;
+    depthStencilTarget.clear_stencil = 0;
+    SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(context.commandBuffer, colorTargets.data(), static_cast<Uint32>(colorTargets.size()), &depthStencilTarget);
+    if (!renderPass) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_BeginGPURenderPass failed: %s", SDL_GetError());
+        return;
+    }
     // Draw Grid
-    SDL_BindGPUGraphicsPipeline(context.renderPass, mGridPipeline);
+    SDL_BindGPUGraphicsPipeline(renderPass, mGridPipeline);
     std::vector<SDL_GPUBufferBinding> gridBindings{{mGridMesh.vertexBuffer, 0}};
-    SDL_BindGPUVertexBuffers(context.renderPass, 0, gridBindings.data(), static_cast<Uint32>(gridBindings.size()));
+    SDL_BindGPUVertexBuffers(renderPass, 0, gridBindings.data(), static_cast<Uint32>(gridBindings.size()));
     SDL_GPUBufferBinding gridIndexBufferBinding{mGridMesh.indexBuffer, 0};
-    SDL_BindGPUIndexBuffer(context.renderPass, &gridIndexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+    SDL_BindGPUIndexBuffer(renderPass, &gridIndexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
     
     glm::mat4 gridModelMatrix = glm::mat4(1.0f);
+    //gridModelMatrix = glm::translate(gridModelMatrix, glm::vec3(0.0f));
+    //gridModelMatrix = glm::rotate(gridModelMatrix, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+    //gridModelMatrix = context.cameraData.viewProjection * gridModelMatrix;
     SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraGPU));
-    SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &gridModelMatrix, sizeof(glm::mat4));
+    SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &gridModelMatrix, sizeof(glm::mat4));
     
     GridParamsFragGPU gridParamsFragGPU{};
     gridParamsFragGPU.offset = glm::vec2(0.0f, 0.0f);
@@ -842,13 +838,15 @@ void Renderer::RecordGridCommands(RenderPassContext& context) {
     gridParamsFragGPU.thickness = 0.0125f;
     gridParamsFragGPU.scroll = 5.0f;
     SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &gridParamsFragGPU, sizeof(GridParamsFragGPU));
-    SDL_DrawGPUIndexedPrimitives(context.renderPass, static_cast<Uint32>(mGridMesh.indices.size()), 1, 0, 0, 0);
+    SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mGridMesh.indices.size()), 1, 0, 0, 0);
+
+    SDL_EndGPURenderPass(renderPass);
 }
 
 void Renderer::RecordModelCommands(RenderPassContext& context) {
     SDL_GPUColorTargetInfo colorTarget{};
     colorTarget.texture = context.swapchainTexture;
-    colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
+    colorTarget.load_op = SDL_GPU_LOADOP_LOAD;
     colorTarget.store_op = SDL_GPU_STOREOP_STORE;
     colorTarget.layer_or_depth_plane = 0;
     colorTarget.clear_color = SDL_FColor{0.3f,0.2f,0.2f,1.0f};
@@ -870,9 +868,9 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
     }
     // Draw Grid
     // Assigning renderpass to the context is temporary. I might not need a struct to hold all of it
-    context.renderPass = renderPass;
-    RecordGridCommands(context);
-    context.renderPass = nullptr;
+    //context.renderPass = renderPass;
+    //RecordGridCommands(context);
+    //context.renderPass = nullptr;
     
     // Draw Meshes
     for (auto& node : mNodesThisFrame) {

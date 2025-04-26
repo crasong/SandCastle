@@ -69,7 +69,7 @@ public:
     struct RenderPassContext {
         SDL_GPUCommandBuffer* commandBuffer = nullptr;
         SDL_GPUTexture* swapchainTexture = nullptr;
-        SDL_GPURenderPass* renderPass = nullptr;
+        //SDL_GPURenderPass* renderPass = nullptr;
         CameraGPU cameraData{};
     };
 

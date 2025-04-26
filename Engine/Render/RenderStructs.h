@@ -1,5 +1,8 @@
 #pragma once
+
+#include <assimp/material.h>
 #include <glm/glm.hpp>
+#include <SDL3/SDL_gpu.h>
 
 struct Light {
 	glm::vec3 direction;
