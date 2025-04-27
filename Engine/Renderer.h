@@ -43,16 +43,20 @@ public:
         SDL_GPUTransferBuffer* transferBuffer = nullptr;
     };
 
-    struct MeshLoadingContext {
-        // Texture info
-        std::unordered_map<std::string, TextureLoadingContext> textureInfoMap;
-
-        // Material info
+    struct MaterialLoadingContext {
         bool bUseMetallic  = false;
         bool bUseRoughness = false;
         float metallicFactor = 0.0f;
         float roughnessFactor = 0.0f;
         float anisotropyFactor = 0.0f;
+    };
+
+    struct MeshLoadingContext {
+        // Texture info
+        std::unordered_map<std::string, TextureLoadingContext> textureInfoMap;
+
+        // Material info
+        std::vector<MaterialLoadingContext> materials;
     };
 
     struct ModelDescriptor {

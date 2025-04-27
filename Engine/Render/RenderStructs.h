@@ -6,21 +6,16 @@
 
 struct Light {
 	glm::vec3 direction;
-	glm::vec3 radiance;
+	glm::vec3 color;
 	bool enabled = false;
 };
 
 struct Vertex {
 	glm::vec3 position;
 	glm::vec3 normal;
-	glm::vec3 tangent;
-	glm::vec3 bitangent;
+	//glm::vec3 tangent;
+	//glm::vec3 bitangent;
 	glm::vec2 uv;
-};
-
-struct PositionTextureVertex {
-	glm::vec3 position = {0, 0, 0};
-	glm::vec2 uv = {0, 0};
 };
 
 struct MeshTexture {
@@ -32,7 +27,7 @@ struct Mesh {
 	glm::vec3 mRootPosition = {0.0f, 0.0f, 0.0f}; // Base position in local space
 	glm::vec3 mRootOrientation = {0.0f, 0.0f, 0.0f}; // Base orientation in degrees
 	glm::vec3 mRootScale = {1.0f, 1.0f, 1.0f};
-	std::vector<PositionTextureVertex> vertices;
+	std::vector<Vertex> vertices;
 	std::vector<Uint32> indices;
 	uint8_t samplerTypeIndex = 0;
 	SDL_GPUBuffer* vertexBuffer = nullptr;

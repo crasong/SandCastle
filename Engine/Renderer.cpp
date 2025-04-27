@@ -42,22 +42,23 @@ static std::vector<std::string> SamplerNames =
 };
 static std::vector<Renderer::ModelDescriptor> Models = 
 {
-    //{"viking_room", EMPTY_PATH, OBJ_EXT, "viking_room.png", 0, false, false, false},
-    //{"DamagedHelmet", GLTF_PATH, GLTF_EXT, "Default_albedo.jpg", 1, false, false, false},
     {"Sponza", GLTF_PATH, GLTF_EXT, "", 1, false, false, false},
+    //{"DamagedHelmet", GLTF_PATH, GLTF_EXT, "Default_albedo.jpg", 1, false, false, false},
     {"DamagedHelmet", GLTF_EMBEDDED_PATH, GLTF_EMBEDDED_EXT, "", 1, false, false, false},
     {"SciFiHelmet", GLTF_PATH, GLTF_EXT, "", 1, false, false, false},
 };
-static std::vector<PositionTextureVertex> s_GridVertices = {
-    {{-0.5f, 0.0f, -0.5f}, {0.0f, 0.0f}},
-    {{0.5f, 0.0f, -0.5f}, {1.0f, 0.0f}},
-    {{-0.5f, 0.0f, 0.5f}, {0.0f, 1.0f}},
-    {{0.5f, 0.0f, 0.5f}, {1.0f, 1.0f}},
+static std::vector<Vertex> s_GridVertices = {
+    {{-0.5f, 0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{0.5f, 0.0f, -0.5f} , {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-0.5f, 0.0f, 0.5f} , {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{0.5f, 0.0f, 0.5f}  , {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
 };
 static std::vector<Uint32> s_GridIndices = {
     0, 1, 2,
     1, 2, 3,
 };
+static unsigned int s_ModelLoadingFlags = aiProcess_Triangulate | aiProcess_PreTransformVertices | aiProcess_FlipUVs 
+                                        | aiProcess_GenSmoothNormals | aiProcess_TransformUVCoords | aiProcess_JoinIdenticalVertices;
 
 Renderer::Renderer() {}
 
@@ -109,13 +110,13 @@ void Renderer::InitAssetLoader() {
 }
 
 bool Renderer::InitPipelines() {
-    SDL_GPUShader* vertexShader = LoadShader(mSDLDevice, "TexturedQuadWithMatrix.vert", 0, 1, 0, 0);
+    SDL_GPUShader* vertexShader = LoadShader(mSDLDevice, "Phong.vert", 0, 3, 0, 0);
     if (!vertexShader) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Vertex Shader failed to load");
         return false;
     }
 
-    SDL_GPUShader* fragmentShader = LoadShader(mSDLDevice, "TexturedQuad.frag", 1, 0, 0, 0);
+    SDL_GPUShader* fragmentShader = LoadShader(mSDLDevice, "Phong.frag", 1, 1, 0, 0);
     if (!fragmentShader) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Vertex Shader failed to load");
         return false;
@@ -178,15 +179,16 @@ bool Renderer::InitPipelines() {
 
     SDL_GPUVertexBufferDescription vertexBufferDescription{};
     vertexBufferDescription.slot = 0;
-    vertexBufferDescription.pitch = sizeof(PositionTextureVertex);
+    vertexBufferDescription.pitch = sizeof(Vertex);
     vertexBufferDescription.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
     vertexBufferDescription.instance_step_rate = 0;
     std::vector<SDL_GPUVertexBufferDescription> vertexBufferDescriptions{vertexBufferDescription};
 
     SDL_GPUVertexAttribute vertexPositionAttribute{ 0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0};
-    SDL_GPUVertexAttribute vertexTextureAttribute{ 1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, sizeof(glm::vec3)};
-    std::vector<SDL_GPUVertexAttribute> vertexAttributes{vertexPositionAttribute, vertexTextureAttribute};
-    SDL_GPUVertexInputState vertexInputState{ vertexBufferDescriptions.data(), 1, vertexAttributes.data(), 2};
+    SDL_GPUVertexAttribute vertexNormalAttribute{ 1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, sizeof(glm::vec3)};
+    SDL_GPUVertexAttribute vertexTextureAttribute{ 2, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, 2 * sizeof(glm::vec3)};
+    std::vector<SDL_GPUVertexAttribute> vertexAttributes{vertexPositionAttribute, vertexNormalAttribute, vertexTextureAttribute};
+    SDL_GPUVertexInputState vertexInputState{ vertexBufferDescriptions.data(), 1, vertexAttributes.data(), 3};
 
     SDL_GPUGraphicsPipelineCreateInfo pipelineCreateInfo{};
     pipelineCreateInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
@@ -314,7 +316,6 @@ void Renderer::InitGrid() {
     SDL_GPUTransferBuffer* indexTransferBuffer = nullptr;
     CreateModelGPUResources(mGridMesh, vertexBufferCreateInfo, vertexTransferBuffer, indexBufferCreateInfo, indexTransferBuffer);
 
-    //mMeshes["Grid"] = mGridMesh;
     // Upload the transfer data to the vertex buffer
     SDL_GPUCommandBuffer* uploadCmdBuff = SDL_AcquireGPUCommandBuffer(mSDLDevice);
     SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuff);
@@ -426,7 +427,7 @@ bool Renderer::CreateModelGPUResources(
     
     // Create GPU resources
     vertexBufferCreateInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
-    vertexBufferCreateInfo.size = static_cast<Uint32>(mesh.vertices.size() * sizeof(PositionTextureVertex));
+    vertexBufferCreateInfo.size = static_cast<Uint32>(mesh.vertices.size() * sizeof(Vertex));
     mesh.vertexBuffer = SDL_CreateGPUBuffer(mSDLDevice, &vertexBufferCreateInfo);
     if (!mesh.vertexBuffer) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Vertex' buffer");
@@ -470,7 +471,7 @@ bool Renderer::CreateModelGPUResources(
         return false;
     }
     else {
-        std::span transferBufferData{ static_cast<PositionTextureVertex*>(vertexBufferDataPtr), mesh.vertices.size()};
+        std::span transferBufferData{ static_cast<Vertex*>(vertexBufferDataPtr), mesh.vertices.size()};
         std::ranges::copy(mesh.vertices, transferBufferData.begin());
 
         std::span indexBufferData{ static_cast<Uint32*>(indexBufferDataPtr), mesh.indices.size()};
@@ -642,7 +643,7 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Mesh& outMesh, 
     std::string modelPathString = modelPath.make_preferred().string();
     // Load the model
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(modelPathString, aiProcess_Triangulate | aiProcess_PreTransformVertices | aiProcess_FlipUVs);
+    const aiScene* scene = importer.ReadFile(modelPathString, s_ModelLoadingFlags);
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->HasMeshes()) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s \nmodel filepath: %s", importer.GetErrorString(), modelPathString.c_str());
         return false;
@@ -667,13 +668,19 @@ void Renderer::ParseVertices(const aiScene* scene, const bool flipX, const bool 
             outMesh.vertices.reserve(mesh->mNumVertices);
             for (size_t j = 0; j < mesh->mNumVertices; ++j) {
                 auto vertex = mesh->mVertices[j];
+                auto normal = mesh->mNormals[j];
                 auto uv = mesh->mTextureCoords[0][j];
                 outMesh.vertices.push_back({ 
                     .position = {
                         vertex.x * xMod,
                         vertex.y * yMod,
                         vertex.z * zMod
-                    }, 
+                    },
+                    .normal = {
+                        normal.x * xMod,
+                        normal.y * yMod,
+                        normal.z * zMod
+                    },
                     .uv = {
                         uv.x, 
                         uv.y
@@ -691,6 +698,7 @@ void Renderer::ParseVertices(const aiScene* scene, const bool flipX, const bool 
     }
 }
 
+// TODO: Is this necessary? How do I detect information rather than hardcode?
 void Renderer::ParseMaterials(const aiScene* scene, Mesh& outMesh, MeshLoadingContext& outContext) {
     const bool bIsBinary = (scene->mNumTextures > 0);
     for (size_t i = 0; i < scene->mNumMaterials; ++i) {
@@ -744,8 +752,6 @@ void Renderer::ParseTextures(const aiScene* scene, Mesh& outMesh, MeshLoadingCon
                     outContext.textureInfoMap.emplace(textureContext.filename, textureContext);
                     outMesh.textureIdMap[textureContext.filename] = {.texture = nullptr, .type = type};
                 }
-                // for (size_t k = 0; k < texCount; ++k){
-                // }
             }
         }
     }
@@ -826,24 +832,24 @@ void Renderer::RecordGridCommands(RenderPassContext& context) {
     SDL_BindGPUIndexBuffer(renderPass, &gridIndexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
     
     glm::mat4 gridModelMatrix = glm::mat4(1.0f);
-    //gridModelMatrix = glm::translate(gridModelMatrix, glm::vec3(0.0f));
-    //gridModelMatrix = glm::rotate(gridModelMatrix, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-    //gridModelMatrix = context.cameraData.viewProjection * gridModelMatrix;
-    SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraGPU));
-    SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &gridModelMatrix, sizeof(glm::mat4));
+    //SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraGPU));
+    //SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &gridModelMatrix, sizeof(glm::mat4));
     
     GridParamsFragGPU gridParamsFragGPU{};
     gridParamsFragGPU.offset = glm::vec2(0.0f, 0.0f);
     gridParamsFragGPU.numCells = 16;
     gridParamsFragGPU.thickness = 0.0125f;
     gridParamsFragGPU.scroll = 5.0f;
-    SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &gridParamsFragGPU, sizeof(GridParamsFragGPU));
-    SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mGridMesh.indices.size()), 1, 0, 0, 0);
+    //SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &gridParamsFragGPU, sizeof(GridParamsFragGPU));
+    //SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mGridMesh.indices.size()), 1, 0, 0, 0);
 
     SDL_EndGPURenderPass(renderPass);
 }
 
 void Renderer::RecordModelCommands(RenderPassContext& context) {
+    // TEMP
+    static Light point1{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
+
     SDL_GPUColorTargetInfo colorTarget{};
     colorTarget.texture = context.swapchainTexture;
     colorTarget.load_op = SDL_GPU_LOADOP_LOAD;
@@ -866,11 +872,7 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
         mNodesThisFrame.clear();
         return;
     }
-    // Draw Grid
-    // Assigning renderpass to the context is temporary. I might not need a struct to hold all of it
-    //context.renderPass = renderPass;
-    //RecordGridCommands(context);
-    //context.renderPass = nullptr;
+    // Draw Grid here? TBD
     
     // Draw Meshes
     for (auto& node : mNodesThisFrame) {
@@ -894,10 +896,11 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
         modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.x), glm::vec3(1, 0, 0));
         modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.z), glm::vec3(0, 0, 1));
         modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));
-        //modelMatrix = glm::rotate(modelMatrix, SDL_GetTicks() / 1000.0f, glm::vec3(0, 0, 1));
-        // modelviewprojection matrix
-        glm::mat4 mvpMatrix = context.cameraData.viewProjection * modelMatrix;
-        SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &mvpMatrix, sizeof(glm::mat4));
+        
+        SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraGPU));
+        SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &modelMatrix, sizeof(glm::mat4));
+        SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &point1.direction, sizeof(glm::vec3));
+        SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &point1.color, sizeof(glm::vec3));
 
         SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mesh.indices.size()), 1, 0, 0, 0);
     }
@@ -959,7 +962,6 @@ void Renderer::Shutdown() {
         Mesh& mesh = namedMesh.second;
         if (mesh.vertexBuffer) SDL_ReleaseGPUBuffer(mSDLDevice, mesh.vertexBuffer);
         if (mesh.indexBuffer) SDL_ReleaseGPUBuffer(mSDLDevice, mesh.indexBuffer);
-        //if (mesh.colorTexture) SDL_ReleaseGPUTexture(mSDLDevice, mesh.colorTexture);
         for (auto [type, meshTexture] : mesh.textureIdMap) {
             if (meshTexture.texture) SDL_ReleaseGPUTexture(mSDLDevice, meshTexture.texture);
         }

@@ -22,3 +22,4 @@ for filename in *.comp.hlsl; do
         shadercross "$filename" -o "../Compiled/DXIL/${filename/.hlsl/.dxil}"
     fi
 done
+#read -p "Press any key to continue" x
