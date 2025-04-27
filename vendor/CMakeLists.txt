@@ -48,6 +48,8 @@ target_include_directories(vendor INTERFACE
                             ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends)
 
 target_compile_definitions(vendor INTERFACE
+                GLM_ENABLE_EXPERIMENTAL
                 GLM_FORCE_DEPTH_ZERO_TO_ONE
+                GLM_FORCE_RADIANS
                 IMGUI_DEFINE_MATH_OPERATORS
         )
