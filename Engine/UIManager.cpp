@@ -22,6 +22,9 @@ void UIManager::Init(SDL_Window* window, SDL_GPUDevice* device) {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigFlags |= ImGuiConfigFlags_DpiEnableScaleFonts;
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();

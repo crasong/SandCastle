@@ -128,8 +128,7 @@ void Engine::PollEvents() {
                 ProcessEvent(event.button);
                 break;
             case SDL_EVENT_MOUSE_BUTTON_UP:
-                mInputState.mouseButtonDown[event.button.button] = false;
-                mInputState.mouseDragging = false;
+                ProcessEvent(event.button);
                 break;
             case SDL_EVENT_MOUSE_WHEEL:
                 mInputState.mouseScroll.x = event.wheel.x;
@@ -243,7 +242,13 @@ void Engine::ProcessEvent(const SDL_MouseMotionEvent& event) {
 void Engine::ProcessEvent(const SDL_MouseButtonEvent& event) {
     // Handle mouse button events here
     mInputState.mouseButtonDown[event.button] = event.down;
-    mInputState.mouseDragging = event.down && (event.button == SDL_BUTTON_LEFT);
+    mInputState.mouseDragging = event.down && (event.button == SDL_BUTTON_RIGHT);
+    if (mInputState.mouseDragging && SDL_CursorVisible()) {
+        SDL_assert(SDL_HideCursor());
+    }
+    else if (!mInputState.mouseDragging && !SDL_CursorVisible()) {
+        SDL_ShowCursor();
+    }
 }
 void Engine::ProcessEvent(const SDL_WindowEvent& event) {
     // Handle window events here
@@ -262,11 +267,6 @@ void Engine::ProcessCameraInput(const float deltaTime, CameraNode* camera) {
     glm::vec3 forwardDir{glm::sin(yaw), 0.0f, glm::cos(yaw)};
     glm::vec3 rightDir(forwardDir.z, 0.0f, -forwardDir.x);
     glm::vec3 upDir(cam->mUp);
-
-    //glm::vec4 forward4 = glm::rotate(glm::mat4(1.0f), glm::radians(cam->mAngle), cam->mUp) * glm::vec4(0.0f, 0.0f, -1.0f, 1.0f);
-    //glm::vec3 forward = glm::vec3(forward4.x, forward4.y, forward4.z);
-    //glm::vec4 right4 = glm::rotate(glm::mat4(1.0f), glm::radians(cam->mAngle), cam->mUp) * glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
-    //glm::vec3 right = glm::vec3(right4.x, right4.y, right4.z);
 
     glm::vec3 camVel(0.0f, 0.0f, 0.0f);
     if (mInputState.keyDown[SDLK_W]) {
