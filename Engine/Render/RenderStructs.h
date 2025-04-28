@@ -4,10 +4,22 @@
 #include <glm/glm.hpp>
 #include <SDL3/SDL_gpu.h>
 
-struct Light {
-	glm::vec3 direction;
-	glm::vec3 color;
+struct SunLight {
+	glm::vec3 direction = {-1.0f, -1.0f, -1.0f};
+	glm::vec3 color 	= { 1.0f,  1.0f,  1.0f};
 	bool enabled = false;
+};
+
+struct PointLight {
+	glm::vec3 position = {0.0f, 0.0f, 0.0f};
+	glm::vec3 color    = {1.0f, 1.0f, 1.0f};
+	bool enabled = false;
+};
+
+struct SceneLighting {
+	glm::vec3 ambientLight;
+	PointLight pointLights[8];
+	bool inited = false;
 };
 
 struct Vertex {

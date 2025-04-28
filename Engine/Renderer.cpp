@@ -57,6 +57,9 @@ static std::vector<Uint32> s_GridIndices = {
     0, 1, 2,
     1, 2, 3,
 };
+static std::vector<glm::vec3> s_PointLightPositions = {
+    {},
+};
 static unsigned int s_ModelLoadingFlags = aiProcess_Triangulate | aiProcess_PreTransformVertices | aiProcess_FlipUVs 
                                         | aiProcess_GenSmoothNormals | aiProcess_TransformUVCoords | aiProcess_JoinIdenticalVertices;
 
@@ -847,9 +850,6 @@ void Renderer::RecordGridCommands(RenderPassContext& context) {
 }
 
 void Renderer::RecordModelCommands(RenderPassContext& context) {
-    // TEMP
-    static Light point1{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
-
     SDL_GPUColorTargetInfo colorTarget{};
     colorTarget.texture = context.swapchainTexture;
     colorTarget.load_op = SDL_GPU_LOADOP_LOAD;
@@ -873,6 +873,13 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
         return;
     }
     // Draw Grid here? TBD
+
+    // TEMP
+    static SceneLighting s_lighting;
+    if (!s_lighting.inited) {
+        s_lighting.inited = true;
+        s_lighting.pointLights[0].enabled = true;
+    }
     
     // Draw Meshes
     for (auto& node : mNodesThisFrame) {
@@ -899,8 +906,8 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
         
         SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraGPU));
         SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &modelMatrix, sizeof(glm::mat4));
-        SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &point1.direction, sizeof(glm::vec3));
-        SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &point1.color, sizeof(glm::vec3));
+        SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &s_lighting.pointLights[0].position, sizeof(glm::vec3));
+        SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &s_lighting.pointLights[0].color, sizeof(glm::vec3));
 
         SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mesh.indices.size()), 1, 0, 0, 0);
     }
