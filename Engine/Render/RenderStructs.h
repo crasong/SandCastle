@@ -51,6 +51,7 @@ struct Texture {
 };
 
 struct PBRMaterial {
+	bool isValid    = false;
 	bool isMetal    = false;
 	float roughness = 0.0f;
 	glm::vec3 ambient  = {1.0f, 1.0f, 1.0f};

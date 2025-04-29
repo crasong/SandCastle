@@ -45,7 +45,7 @@ static std::vector<Renderer::ModelDescriptor> Models =
     {"Sponza", GLTF_PATH, GLTF_EXT, "", 1, false, false, false},
     {"DamagedHelmet", GLTF_PATH, GLTF_EXT, "Default_albedo.jpg", 1, false, false, false},
     //{"DamagedHelmet", GLTF_EMBEDDED_PATH, GLTF_EMBEDDED_EXT, "", 1, false, false, false},
-    //{"SciFiHelmet", GLTF_PATH, GLTF_EXT, "", 1, false, false, false},
+    {"SciFiHelmet", GLTF_PATH, GLTF_EXT, "", 1, false, false, false},
 };
 static std::vector<Vertex> s_GridVertices = {
     {{-0.5f, 0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
@@ -64,12 +64,20 @@ static unsigned int s_ModelLoadingFlags = aiProcess_Triangulate | aiProcess_Flip
                                         //| aiProcess_TransformUVCoords | aiProcess_GenBoundingBoxes | aiProcess_CalcTangentSpace;
                                         
 static const std::vector<aiTextureType> s_TextureTypes = {
+    //aiTextureType_BASE_COLOR,
+    //aiTextureType_NORMAL_CAMERA,
+    //aiTextureType_EMISSION_COLOR,
+    //aiTextureType_METALNESS,
+    //aiTextureType_DIFFUSE_ROUGHNESS,
+    //aiTextureType_AMBIENT_OCCLUSION,
+    
+    // These types work for DamagedHelmet
     aiTextureType_BASE_COLOR,
-    aiTextureType_NORMAL_CAMERA,
-    aiTextureType_EMISSION_COLOR,
+    aiTextureType_NORMALS,
+    aiTextureType_EMISSIVE,
     aiTextureType_METALNESS,
     aiTextureType_DIFFUSE_ROUGHNESS,
-    aiTextureType_AMBIENT_OCCLUSION,
+    aiTextureType_LIGHTMAP,
 };
 
 Renderer::Renderer() {}
@@ -122,13 +130,13 @@ void Renderer::InitAssetLoader() {
 }
 
 bool Renderer::InitPipelines() {
-    SDL_GPUShader* vertexShader = LoadShader(mSDLDevice, "Phong.vert", 0, 3, 0, 0);
+    SDL_GPUShader* vertexShader = LoadShader(mSDLDevice, "PBR.vert", 0, 3, 0, 0);
     if (!vertexShader) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Vertex Shader failed to load");
         return false;
     }
 
-    SDL_GPUShader* fragmentShader = LoadShader(mSDLDevice, "Phong.frag", 1, 1, 0, 0);
+    SDL_GPUShader* fragmentShader = LoadShader(mSDLDevice, "PBR.frag", 1, 1, 0, 0);
     if (!fragmentShader) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Vertex Shader failed to load");
         return false;
@@ -403,20 +411,30 @@ bool Renderer::InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh) {
             SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create texture GPU resources");
             return false;
         }
-        mesh.textureIdMap[texcontext.filename].texture = gputexture;
-        mesh.textureIdMap[texcontext.filename].sampler = mSamplers[1];
+        mesh.textureIdMap[textype].texture = gputexture;
+        mesh.textureIdMap[textype].sampler = mSamplers[1];
+        gputexture = nullptr;
     }
     SDL_assert(mesh.textureIdMap.size() == context.textureInfoMap.size());
 
     // Update the Materials with the loaded textures
     for (size_t i = 0; i < mesh.materials.size(); ++i) {
         MaterialLoadingContext& matInfo = context.materialInfos[i];
+        //PBRMaterial& material = mesh.materials[i];
         mesh.materials[i].pAlbedo    = mesh.textureIdMap[matInfo.albedo];
         mesh.materials[i].pNormalMap = mesh.textureIdMap[matInfo.normal];
         mesh.materials[i].pEmissive  = mesh.textureIdMap[matInfo.emissive];
         mesh.materials[i].pMetallic  = mesh.textureIdMap[matInfo.metallic];
         mesh.materials[i].pRoughness = mesh.textureIdMap[matInfo.roughness];
         mesh.materials[i].pAO        = mesh.textureIdMap[matInfo.ao];
+        mesh.materials[i].isValid = (
+            mesh.materials[i].pAlbedo.texture
+         && mesh.materials[i].pNormalMap.texture
+         //&& mesh.materials[i].pEmissive.texture
+         && mesh.materials[i].pMetallic.texture
+         //&& mesh.materials[i].pRoughness.texture
+         && mesh.materials[i].pAO.texture
+        );
     }
 
     // Upload the transfer data to the vertex buffer
@@ -864,27 +882,27 @@ void Renderer::ParseTextures(const aiScene* scene, Mesh& outMesh, MeshLoadingCon
             }
 
             aiString texturePath;
-            if (material->GetTexture(aiTextureType_DIFFUSE, 0, &texturePath) == AI_SUCCESS) {
+            if (material->GetTexture(s_TextureTypes[0], 0, &texturePath) == AI_SUCCESS) {
                 materialContext.albedo = texturePath.C_Str();
                 SDL_assert(texturePath.length > 0);
             }
-            if (material->GetTexture(aiTextureType_NORMALS, 0, &texturePath) == AI_SUCCESS) {
+            if (material->GetTexture(s_TextureTypes[1], 0, &texturePath) == AI_SUCCESS) {
                 materialContext.normal = texturePath.C_Str();
                 SDL_assert(texturePath.length > 0);
             }
-            if (material->GetTexture(aiTextureType_EMISSIVE, 0, &texturePath) == AI_SUCCESS) {
+            if (material->GetTexture(s_TextureTypes[2], 0, &texturePath) == AI_SUCCESS) {
                 materialContext.emissive = texturePath.C_Str();
                 SDL_assert(texturePath.length > 0);
             }
-            if (material->GetTexture(aiTextureType_GLTF_METALLIC_ROUGHNESS, 0, &texturePath) == AI_SUCCESS) {
+            if (material->GetTexture(s_TextureTypes[3], 0, &texturePath) == AI_SUCCESS) {
                 materialContext.metallic = texturePath.C_Str();
                 SDL_assert(texturePath.length > 0);
             }
-            if (material->GetTexture(aiTextureType_GLTF_METALLIC_ROUGHNESS, 0, &texturePath) == AI_SUCCESS) {
+            if (material->GetTexture(s_TextureTypes[4], 0, &texturePath) == AI_SUCCESS) {
                 materialContext.roughness = texturePath.C_Str();
                 SDL_assert(texturePath.length > 0);
             }
-            if (material->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &texturePath) == AI_SUCCESS) {
+            if (material->GetTexture(s_TextureTypes[5], 0, &texturePath) == AI_SUCCESS) {
                 materialContext.ao = texturePath.C_Str();
                 SDL_assert(texturePath.length > 0);
             }
@@ -1048,12 +1066,12 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
         for (const MeshEntry& submesh : mesh.submeshes) {
             const PBRMaterial& material = mesh.materials[submesh.materialIndex];
             std::vector<SDL_GPUTextureSamplerBinding> samplerBindings = {
-                {material.pAlbedo.texture   , material.pAlbedo.sampler   },
-                //{material.pNormalMap.texture, material.pNormalMap.sampler},
-                //{material.pEmissive.texture , material.pEmissive.sampler },
-                //{material.pMetallic.texture , material.pMetallic.sampler },
+                {material.pAlbedo.texture   , mSamplers[1]}, //material.pAlbedo.sampler   },
+                //{material.pNormalMap.texture, mSamplers[1]}, //material.pNormalMap.sampler},
+                //{material.pEmissive.texture , mSamplers[1]}, //material.pEmissive.sampler },
+                //{material.pMetallic.texture , mSamplers[1]}, //material.pMetallic.sampler },
                 //{material.pRoughness.texture, material.pRoughness.sampler},
-                //{material.pAO.texture       , material.pAO.sampler       },
+                //{material.pAO.texture       , mSamplers[1]}, //material.pAO.sampler       },
             };
             SDL_BindGPUFragmentSamplers(renderPass, 0, samplerBindings.data(), static_cast<Uint32>(samplerBindings.size()));
     

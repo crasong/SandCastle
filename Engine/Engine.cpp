@@ -48,7 +48,7 @@ bool Engine::Init() {
         entity.AddComponent<TransformComponent>(
             glm::vec3(0.0f, 0.0f, 0.0f), 
             glm::vec3(0.0f, 0.0f, 0.0f), 
-            glm::vec3(1.0f));
+            glm::vec3(2.0f));
         entity.AddComponent<UIComponent>();
         AddEntity(new Entity(std::move(entity)));
     }
@@ -56,24 +56,24 @@ bool Engine::Init() {
         Entity entity("Space Helmet");
         entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["DamagedHelmet"]);
         entity.AddComponent<TransformComponent>(
-            glm::vec3(3.0f, 0.0f, 0.0f), 
-            glm::vec3(0.0f, 225.0f, 0.0f), 
+            glm::vec3(3.0f, 2.0f, 0.0f), 
+            glm::vec3(0.0f, 0.0f, 0.0f), 
             glm::vec3(1.0f));
         entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
         entity.AddComponent<UIComponent>();
         AddEntity(new Entity(std::move(entity)));
     }
-    // {
-    //     Entity entity("Sci Fi Helmet");
-    //     entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["SciFiHelmet"]);
-    //     entity.AddComponent<TransformComponent>(
-    //         glm::vec3(-3.0f, 0.0f, 0.0f), 
-    //         glm::vec3(0.0f, 135.0f, 0.0f), 
-    //         glm::vec3(1.0f));
-    //     entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
-    //     entity.AddComponent<UIComponent>();
-    //     AddEntity(new Entity(std::move(entity)));
-    // }
+    {
+        Entity entity("Sci Fi Helmet");
+        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["SciFiHelmet"]);
+        entity.AddComponent<TransformComponent>(
+            glm::vec3(-3.0f, 2.0f, 0.0f), 
+            glm::vec3(0.0f, 135.0f, 0.0f), 
+            glm::vec3(1.0f));
+        entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+        entity.AddComponent<UIComponent>();
+        AddEntity(new Entity(std::move(entity)));
+    }
 
     lastTicks = SDL_GetTicks();
     return true;
