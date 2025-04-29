@@ -43,6 +43,16 @@ bool Engine::Init() {
         AddEntity(new Entity(std::move(entity)));
     }
     {
+        Entity entity("Sponza");
+        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["Sponza"]);
+        entity.AddComponent<TransformComponent>(
+            glm::vec3(0.0f, 0.0f, 0.0f), 
+            glm::vec3(0.0f, 0.0f, 0.0f), 
+            glm::vec3(1.0f));
+        entity.AddComponent<UIComponent>();
+        AddEntity(new Entity(std::move(entity)));
+    }
+    {
         Entity entity("Space Helmet");
         entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["DamagedHelmet"]);
         entity.AddComponent<TransformComponent>(
@@ -53,27 +63,17 @@ bool Engine::Init() {
         entity.AddComponent<UIComponent>();
         AddEntity(new Entity(std::move(entity)));
     }
-    {
-        Entity entity("Sci Fi Helmet");
-        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["SciFiHelmet"]);
-        entity.AddComponent<TransformComponent>(
-            glm::vec3(-3.0f, 0.0f, 0.0f), 
-            glm::vec3(0.0f, 135.0f, 0.0f), 
-            glm::vec3(1.0f));
-        entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
-        entity.AddComponent<UIComponent>();
-        AddEntity(new Entity(std::move(entity)));
-    }
-    {
-        Entity entity("Sponza");
-        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["Sponza"]);
-        entity.AddComponent<TransformComponent>(
-            glm::vec3(0.0f, 0.0f, 0.0f), 
-            glm::vec3(0.0f, 0.0f, 0.0f), 
-            glm::vec3(1.0f));
-        entity.AddComponent<UIComponent>();
-        AddEntity(new Entity(std::move(entity)));
-    }
+    // {
+    //     Entity entity("Sci Fi Helmet");
+    //     entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["SciFiHelmet"]);
+    //     entity.AddComponent<TransformComponent>(
+    //         glm::vec3(-3.0f, 0.0f, 0.0f), 
+    //         glm::vec3(0.0f, 135.0f, 0.0f), 
+    //         glm::vec3(1.0f));
+    //     entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+    //     entity.AddComponent<UIComponent>();
+    //     AddEntity(new Entity(std::move(entity)));
+    // }
 
     lastTicks = SDL_GetTicks();
     return true;

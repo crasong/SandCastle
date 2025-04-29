@@ -1,5 +1,6 @@
 #pragma once
 
+#include <assimp/Importer.hpp>
 #include <assimp/material.h>
 #include <glm/glm.hpp>
 #include <Input.h>
@@ -11,6 +12,7 @@
 #include <vector>
 #include <unordered_map>
 
+struct aiNode;
 struct aiScene;
 class CameraNode;
 class RenderNode;
@@ -39,24 +41,34 @@ public:
         aiTextureType          type = aiTextureType_NONE;
         std::string            filename;
         SDL_Surface*           imageData      = nullptr;
-        SDL_GPUTexture*        texture        = nullptr;
         SDL_GPUTransferBuffer* transferBuffer = nullptr;
     };
 
     struct MaterialLoadingContext {
-        bool bUseMetallic  = false;
-        bool bUseRoughness = false;
-        float metallicFactor = 0.0f;
-        float roughnessFactor = 0.0f;
-        float anisotropyFactor = 0.0f;
+        // this assumes PBR 
+        std::string albedo;
+        std::string normal;
+        std::string emissive;
+        std::string metallic;
+        std::string roughness;
+        std::string ao;
+    };
+
+    struct NodeLoadingContext {
+        NodeLoadingContext() {}
+        NodeLoadingContext(const aiNode* n) { pNode = n;}
+        const aiNode* pNode = nullptr;
+        bool isRequired = false;
     };
 
     struct MeshLoadingContext {
-        // Texture info
+        // Scene info
+        std::unordered_map<std::string, NodeLoadingContext> nodeInfoMap;
         std::unordered_map<std::string, TextureLoadingContext> textureInfoMap;
+        std::vector<MaterialLoadingContext> materialInfos; // we use indices for identifying materials
 
-        // Material info
-        std::vector<MaterialLoadingContext> materials;
+        Assimp::Importer importer;
+        const aiScene* scene;
     };
 
     struct ModelDescriptor {
@@ -91,6 +103,8 @@ public:
     void CycleSampler();
     void IncreaseScale();
     void DecreaseScale();
+
+    glm::vec2 GetWindowCenter() { return mCachedWindowCenter; }
 
     void SetCameraEntity(CameraNode* cameraNode);
     CameraNode* GetCameraEntity() const {
@@ -152,6 +166,7 @@ private:
     SDL_Surface* LoadImage(const std::string& foldername, const std::string& subfoldername, const std::string& texturename, int desiredChannels = 0);
     SDL_Surface* LoadImageShared(SDL_Surface* image, int desiredChannels = 0);
     bool LoadModel(const ModelDescriptor& modelDescriptor, Mesh& outMesh, MeshLoadingContext& outContext);
+    void ParseNodes(Mesh& outMesh, MeshLoadingContext& outContext);
     void ParseVertices(const aiScene* scene, const bool flipX, const bool flipY, const bool flipZ, Mesh& outMesh, MeshLoadingContext& outContext);
     void ParseMaterials(const aiScene* scene, Mesh& outMesh, MeshLoadingContext& outContext);
     void ParseTextures(const aiScene* scene, Mesh& outMesh, MeshLoadingContext& outContext);
@@ -173,6 +188,7 @@ private:
     Uint8 mCurrentSamplerIndex = 0;
     RenderMode mRenderMode = RenderMode::Fill;
     float mScale = 1.0f;
+    glm::vec2 mCachedWindowCenter;
     const float mScaleStep = 10.0f;
     const float mCameraSpeed = 5.0f;
     const float mCameraRotationSpeed = 0.5f;

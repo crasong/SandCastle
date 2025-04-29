@@ -1,6 +1,5 @@
 #include "Renderer.h"
 
-#include <assimp/Importer.hpp>
 #include <assimp/mesh.h>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
@@ -11,6 +10,7 @@
 #include <imgui_impl_sdlgpu3.h>
 #include <memory>
 #include <Nodes.h>
+#include <queue>
 #include <SDL3/SDL_vulkan.h>
 #include <SDL3_image/SDL_image.h>
 #include <span>
@@ -43,9 +43,9 @@ static std::vector<std::string> SamplerNames =
 static std::vector<Renderer::ModelDescriptor> Models = 
 {
     {"Sponza", GLTF_PATH, GLTF_EXT, "", 1, false, false, false},
-    //{"DamagedHelmet", GLTF_PATH, GLTF_EXT, "Default_albedo.jpg", 1, false, false, false},
-    {"DamagedHelmet", GLTF_EMBEDDED_PATH, GLTF_EMBEDDED_EXT, "", 1, false, false, false},
-    {"SciFiHelmet", GLTF_PATH, GLTF_EXT, "", 1, false, false, false},
+    {"DamagedHelmet", GLTF_PATH, GLTF_EXT, "Default_albedo.jpg", 1, false, false, false},
+    //{"DamagedHelmet", GLTF_EMBEDDED_PATH, GLTF_EMBEDDED_EXT, "", 1, false, false, false},
+    //{"SciFiHelmet", GLTF_PATH, GLTF_EXT, "", 1, false, false, false},
 };
 static std::vector<Vertex> s_GridVertices = {
     {{-0.5f, 0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
@@ -60,8 +60,17 @@ static std::vector<Uint32> s_GridIndices = {
 static std::vector<glm::vec3> s_PointLightPositions = {
     {},
 };
-static unsigned int s_ModelLoadingFlags = aiProcess_Triangulate | aiProcess_PreTransformVertices | aiProcess_FlipUVs 
-                                        | aiProcess_GenSmoothNormals | aiProcess_TransformUVCoords | aiProcess_JoinIdenticalVertices;
+static unsigned int s_ModelLoadingFlags = aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals | aiProcess_JoinIdenticalVertices;
+                                        //| aiProcess_TransformUVCoords | aiProcess_GenBoundingBoxes | aiProcess_CalcTangentSpace;
+                                        
+static const std::vector<aiTextureType> s_TextureTypes = {
+    aiTextureType_BASE_COLOR,
+    aiTextureType_NORMAL_CAMERA,
+    aiTextureType_EMISSION_COLOR,
+    aiTextureType_METALNESS,
+    aiTextureType_DIFFUSE_ROUGHNESS,
+    aiTextureType_AMBIENT_OCCLUSION,
+};
 
 Renderer::Renderer() {}
 
@@ -372,17 +381,42 @@ bool Renderer::InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh) {
     }
 
     // Create Texture resources
-    for (auto& [filename, context] : context.textureInfoMap) {
-        // Check if we still need to load the texture files
-        if (context.imageData == nullptr) {
-            context.imageData = LoadImage(modelDescriptor.foldername, modelDescriptor.subFoldername, filename, 4);
-            SDL_assert(context.imageData);
+    for (auto& [textype, texcontext] : context.textureInfoMap) {
+        // First, load the image files. See if they are embedded in the scene file
+        if (const bool bTexturesEmbedded = context.scene->mNumTextures > 0) {
+            if (const aiTexture* texture = context.scene->GetEmbeddedTexture(texcontext.filename.c_str())) {
+                const size_t texSize = (texture->mHeight == 0) ? texture->mWidth : texture->mWidth * texture->mHeight;
+                if (SDL_IOStream* ioStream = SDL_IOFromMem(texture->pcData, texSize)) {
+                    if (SDL_Surface* image = IMG_LoadTyped_IO(ioStream, true, texture->achFormatHint)) {
+                        texcontext.imageData = LoadImageShared(image, 4);
+                    }
+                }
+            }
         }
+        else {
+            texcontext.imageData = LoadImage(modelDescriptor.foldername, modelDescriptor.subFoldername, texcontext.filename, 4);
+        }
+        SDL_assert(texcontext.imageData);
         
-        if (!CreateTextureGPUResources(context.imageData, context.filename, context.texture, context.transferBuffer)) {
+        SDL_GPUTexture* gputexture = nullptr;
+        if (!CreateTextureGPUResources(texcontext.imageData, texcontext.filename, gputexture, texcontext.transferBuffer)) {
             SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create texture GPU resources");
             return false;
         }
+        mesh.textureIdMap[texcontext.filename].texture = gputexture;
+        mesh.textureIdMap[texcontext.filename].sampler = mSamplers[1];
+    }
+    SDL_assert(mesh.textureIdMap.size() == context.textureInfoMap.size());
+
+    // Update the Materials with the loaded textures
+    for (size_t i = 0; i < mesh.materials.size(); ++i) {
+        MaterialLoadingContext& matInfo = context.materialInfos[i];
+        mesh.materials[i].pAlbedo    = mesh.textureIdMap[matInfo.albedo];
+        mesh.materials[i].pNormalMap = mesh.textureIdMap[matInfo.normal];
+        mesh.materials[i].pEmissive  = mesh.textureIdMap[matInfo.emissive];
+        mesh.materials[i].pMetallic  = mesh.textureIdMap[matInfo.metallic];
+        mesh.materials[i].pRoughness = mesh.textureIdMap[matInfo.roughness];
+        mesh.materials[i].pAO        = mesh.textureIdMap[matInfo.ao];
     }
 
     // Upload the transfer data to the vertex buffer
@@ -399,13 +433,12 @@ bool Renderer::InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh) {
         SDL_UploadToGPUBuffer(copyPass, &transferBufferLocation, &bufferRegion, false);
     }
     {   // upload texture data
-        for (auto& [filename, context] : context.textureInfoMap) {
+        for (auto& [textype, context] : context.textureInfoMap) {
             SDL_Surface* imageData = context.imageData;
+            SDL_GPUTexture* texture = mesh.textureIdMap[textype].texture;
             SDL_GPUTextureTransferInfo textureTransferInfo{ .transfer_buffer = context.transferBuffer, .offset = 0 };
-            SDL_GPUTextureRegion textureRegion{ .texture = context.texture, .w = static_cast<Uint32>(imageData->w), .h = static_cast<Uint32>(imageData->h), .d = 1 };
+            SDL_GPUTextureRegion textureRegion{ .texture = texture, .w = static_cast<Uint32>(imageData->w), .h = static_cast<Uint32>(imageData->h), .d = 1 };
             SDL_UploadToGPUTexture(copyPass, &textureTransferInfo, &textureRegion, false);
-            mesh.textureIdMap[filename].texture = context.texture;
-            context.texture = nullptr;
         }
     }
 
@@ -645,13 +678,16 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Mesh& outMesh, 
     std::filesystem::path modelPath = std::format("{}Content/Models/{}/{}/{}{}", BasePath, modelDescriptor.foldername, modelDescriptor.subFoldername, modelDescriptor.foldername, modelDescriptor.fileExtension);
     std::string modelPathString = modelPath.make_preferred().string();
     // Load the model
-    Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(modelPathString, s_ModelLoadingFlags);
+    
+    const aiScene* scene = outContext.importer.ReadFile(modelPathString, s_ModelLoadingFlags);
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->HasMeshes()) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s \nmodel filepath: %s", importer.GetErrorString(), modelPathString.c_str());
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s \nmodel filepath: %s", outContext.importer.GetErrorString(), modelPathString.c_str());
         return false;
     }
+    outContext.scene = scene;
+
     ParseVertices(scene, modelDescriptor.flipX, modelDescriptor.flipY, modelDescriptor.flipZ, outMesh, outContext);
+    ParseNodes(outMesh, outContext);
     ParseMaterials(scene, outMesh, outContext);
     ParseTextures(scene, outMesh, outContext);
     SDL_assert(outMesh.textureIdMap.size() == outContext.textureInfoMap.size());
@@ -661,23 +697,106 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Mesh& outMesh, 
     return true;
 }
 
+void Renderer::ParseNodes(Mesh& outMesh, MeshLoadingContext& outContext) {
+    int totalChildMeshes = 0;
+    int parentId = -1;
+    int nodeId = 0;
+    NodeLoadingContext rootNode(outContext.scene->mRootNode);
+    std::queue<NodeLoadingContext> queue;
+    queue.push(rootNode);
+    while (!queue.empty()) {
+        NodeLoadingContext& curr = queue.front();
+        outContext.nodeInfoMap.emplace(curr.pNode->mName.C_Str(), curr);
+        queue.pop();
+
+        SceneNode scenenode{parentId, nodeId};
+
+        totalChildMeshes += curr.pNode->mNumMeshes;
+        // Set transform for meshes in this node;
+        aiMatrix4x4 currMatrix = curr.pNode->mTransformation;
+        aiVector3f pos, rot, scale;
+        currMatrix.Decompose(scale, rot, pos);
+        glm::mat4 nodeTransform = glm::mat4(1.0f);
+        nodeTransform = glm::translate(nodeTransform, glm::vec3(pos.x, pos.y, pos.z));
+        nodeTransform = glm::rotate(nodeTransform, rot.z, glm::vec3(0, 0, 1));
+        nodeTransform = glm::rotate(nodeTransform, rot.y, glm::vec3(0, 1, 0));
+        nodeTransform = glm::rotate(nodeTransform, rot.x, glm::vec3(1, 0, 0));
+        nodeTransform = glm::scale(nodeTransform, glm::vec3(scale.x, scale.y, scale.z));
+        //scenenode.transformation[0][0] = curr.pNode->mTransformation[0][0];
+        //scenenode.transformation[0][1] = curr.pNode->mTransformation[0][1];
+        //scenenode.transformation[0][2] = curr.pNode->mTransformation[0][2];
+        //scenenode.transformation[0][3] = curr.pNode->mTransformation[0][3];
+        //scenenode.transformation[1][0] = curr.pNode->mTransformation[1][0];
+        //scenenode.transformation[1][1] = curr.pNode->mTransformation[1][1];
+        //scenenode.transformation[1][2] = curr.pNode->mTransformation[1][2];
+        //scenenode.transformation[1][3] = curr.pNode->mTransformation[1][3];
+        //scenenode.transformation[2][0] = curr.pNode->mTransformation[2][0];
+        //scenenode.transformation[2][1] = curr.pNode->mTransformation[2][1];
+        //scenenode.transformation[2][2] = curr.pNode->mTransformation[2][2];
+        //scenenode.transformation[2][3] = curr.pNode->mTransformation[2][3];
+        //scenenode.transformation[3][0] = curr.pNode->mTransformation[3][0];
+        //scenenode.transformation[3][1] = curr.pNode->mTransformation[3][1];
+        //scenenode.transformation[3][2] = curr.pNode->mTransformation[3][2];
+        //scenenode.transformation[3][3] = curr.pNode->mTransformation[3][3];
+        //scenenode.transformation = glm::transpose(scenenode.transformation);
+        scenenode.transformation = nodeTransform;
+        
+        outMesh.nodeMap.emplace(nodeId, scenenode);
+        parentId = nodeId;
+        ++nodeId;
+
+        // Queue child nodes
+        for (size_t i = 0; i < curr.pNode->mNumChildren; ++i) {
+            NodeLoadingContext child(curr.pNode->mChildren[i]);
+            queue.push(child);
+        }
+    }
+    //SDL_assert(totalChildMeshes == outContext.scene->mNumMeshes);
+    if (totalChildMeshes == outContext.scene->mNumMeshes) {
+        UpdateCachedTransformations(outMesh);
+    }
+    else {
+        SDL_LogWarn(SDL_LOG_CATEGORY_CUSTOM, "WARNING: Model has mismatch between number of meshes and meshes in nodes [%i] != [%i]", outContext.scene->mNumMeshes, totalChildMeshes);
+        
+        for (size_t i = 0; i < outContext.scene->mNumMeshes; ++i) {
+            outMesh.submeshes[i].transformation = glm::mat4(1.0f);
+        }
+    }
+}
+
 void Renderer::ParseVertices(const aiScene* scene, const bool flipX, const bool flipY, const bool flipZ, Mesh& outMesh, MeshLoadingContext& outContext) {
     const float xMod = flipX ? -1.0f : 1.0f;
     const float yMod = flipY ? -1.0f : 1.0f;
     const float zMod = flipZ ? -1.0f : 1.0f;
-    for (size_t i = 0; i < scene->mNumMeshes; ++i) {
+
+    uint32_t totalVertices = 0;
+    uint32_t totalIndices = 0;
+
+    outMesh.submeshes.resize(scene->mNumMeshes);
+
+    for (size_t i = 0; i < outMesh.submeshes.size(); ++i) {
         auto mesh = scene->mMeshes[i];
+        outMesh.submeshes[i].materialIndex = mesh->mMaterialIndex;
+        outMesh.submeshes[i].numVertices = mesh->mNumVertices;
+        outMesh.submeshes[i].numIndices = mesh->mNumFaces * 3;
+        outMesh.submeshes[i].baseVertex = totalVertices;
+        outMesh.submeshes[i].baseIndex = totalIndices;
+
+        totalVertices += outMesh.submeshes[i].numVertices;
+        totalIndices  += outMesh.submeshes[i].numIndices;
+
         if (mesh->HasPositions()) {
+            const aiVector3D zero3D(0.0f, 0.0f, 0.0f);
             outMesh.vertices.reserve(mesh->mNumVertices);
             for (size_t j = 0; j < mesh->mNumVertices; ++j) {
-                auto vertex = mesh->mVertices[j];
-                auto normal = mesh->mNormals[j];
-                auto uv = mesh->mTextureCoords[0][j];
+                aiVector3D position = mesh->mVertices[j];
+                aiVector3D normal = (mesh->HasNormals()) ? mesh->mNormals[j] : aiVector3D(0.0f, 1.0f, 0.0f);
+                aiVector3D uv = (mesh->HasTextureCoords(0)) ? mesh->mTextureCoords[0][j] : zero3D;
                 outMesh.vertices.push_back({ 
                     .position = {
-                        vertex.x * xMod,
-                        vertex.y * yMod,
-                        vertex.z * zMod
+                        position.x * xMod,
+                        position.y * yMod,
+                        position.z * zMod
                     },
                     .normal = {
                         normal.x * xMod,
@@ -689,13 +808,18 @@ void Renderer::ParseVertices(const aiScene* scene, const bool flipX, const bool 
                         uv.y
                     }
                 });
+                // TODO: Convert from Array-Of-Vertices to Mesh-of-Arrays
+                // v_positions.pushback(info);
+                // v_normals.pushback(info);
+                // v_uv.pushback(info);
             }
             for (size_t j = 0; j < mesh->mNumFaces; ++j) {
                 auto face = mesh->mFaces[j];
+                SDL_assert(face.mNumIndices == 3);
                 outMesh.indices.reserve(face.mNumIndices);
-                for (size_t k = 0; k < face.mNumIndices; ++k) {
-                    outMesh.indices.push_back(face.mIndices[k]);
-                }
+                outMesh.indices.push_back(face.mIndices[0]);
+                outMesh.indices.push_back(face.mIndices[1]);
+                outMesh.indices.push_back(face.mIndices[2]);
             }
         }
     }
@@ -703,61 +827,88 @@ void Renderer::ParseVertices(const aiScene* scene, const bool flipX, const bool 
 
 // TODO: Is this necessary? How do I detect information rather than hardcode?
 void Renderer::ParseMaterials(const aiScene* scene, Mesh& outMesh, MeshLoadingContext& outContext) {
-    const bool bIsBinary = (scene->mNumTextures > 0);
-    for (size_t i = 0; i < scene->mNumMaterials; ++i) {
-        auto material = scene->mMaterials[i];
-        if (material) {
-            aiColor4D baseColor;
-            material->Get(AI_MATKEY_BASE_COLOR, baseColor);
-            bool bUseMetallic;
-            material->Get(AI_MATKEY_USE_METALLIC_MAP, bUseMetallic);
-            bool bUseRoughness;
-            material->Get(AI_MATKEY_USE_ROUGHNESS_MAP, bUseRoughness);
-            if (bUseMetallic) {
-                material->Get(AI_MATKEY_METALLIC_FACTOR, bUseMetallic);
-            }
-        }
-    }
+    // const bool bIsBinary = (scene->mNumTextures > 0);
+    // for (size_t i = 0; i < scene->mNumMaterials; ++i) {
+    //     auto material = scene->mMaterials[i];
+    //     if (material) {
+    //         aiColor4D baseColor;
+    //         material->Get(AI_MATKEY_BASE_COLOR, baseColor);
+    //         bool bUseMetallic;
+    //         if (material->Get(AI_MATKEY_USE_METALLIC_MAP, bUseMetallic) == aiReturn_SUCCESS) {
+    //             material->Get(AI_MATKEY_METALLIC_TEXTURE, bUseMetallic);
+    //         }
+    //         bool bUseRoughness;
+    //         material->Get(AI_MATKEY_USE_ROUGHNESS_MAP, bUseRoughness);
+    //         if (bUseRoughness) {
+    //             material->Get(AI_MATKEY_ROUGHNESS_FACTOR, )
+    //         }
+    //     }
+    // }
 }
 
 void Renderer::ParseTextures(const aiScene* scene, Mesh& outMesh, MeshLoadingContext& outContext) {
-    const bool bIsBinary = (scene->mNumTextures > 0);
-    for (size_t i = 0; i < scene->mNumMaterials; ++i) {
+    outMesh.materials.resize(scene->mNumMaterials);
+    for (size_t i = 0; i < outMesh.materials.size(); ++i) {
         auto material = scene->mMaterials[i];
         if (material) {
-            for (size_t j = 0; j < AI_TEXTURE_TYPE_MAX; ++j) {
-                const aiTextureType type = (aiTextureType)j;
+            MaterialLoadingContext materialContext{};
+            aiColor4D fetchedColor;
+            if (material->Get(AI_MATKEY_COLOR_AMBIENT, fetchedColor) == AI_SUCCESS) {
+                outMesh.materials[i].ambient = {fetchedColor.r, fetchedColor.g, fetchedColor.b};
+            }
+            if (material->Get(AI_MATKEY_COLOR_DIFFUSE, fetchedColor) == AI_SUCCESS) {
+                outMesh.materials[i].diffuse = {fetchedColor.r, fetchedColor.g, fetchedColor.b};
+            }
+            if (material->Get(AI_MATKEY_COLOR_SPECULAR, fetchedColor) == AI_SUCCESS) {
+                outMesh.materials[i].specular = {fetchedColor.r, fetchedColor.g, fetchedColor.b};
+            }
+
+            aiString texturePath;
+            if (material->GetTexture(aiTextureType_DIFFUSE, 0, &texturePath) == AI_SUCCESS) {
+                materialContext.albedo = texturePath.C_Str();
+                SDL_assert(texturePath.length > 0);
+            }
+            if (material->GetTexture(aiTextureType_NORMALS, 0, &texturePath) == AI_SUCCESS) {
+                materialContext.normal = texturePath.C_Str();
+                SDL_assert(texturePath.length > 0);
+            }
+            if (material->GetTexture(aiTextureType_EMISSIVE, 0, &texturePath) == AI_SUCCESS) {
+                materialContext.emissive = texturePath.C_Str();
+                SDL_assert(texturePath.length > 0);
+            }
+            if (material->GetTexture(aiTextureType_GLTF_METALLIC_ROUGHNESS, 0, &texturePath) == AI_SUCCESS) {
+                materialContext.metallic = texturePath.C_Str();
+                SDL_assert(texturePath.length > 0);
+            }
+            if (material->GetTexture(aiTextureType_GLTF_METALLIC_ROUGHNESS, 0, &texturePath) == AI_SUCCESS) {
+                materialContext.roughness = texturePath.C_Str();
+                SDL_assert(texturePath.length > 0);
+            }
+            if (material->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &texturePath) == AI_SUCCESS) {
+                materialContext.ao = texturePath.C_Str();
+                SDL_assert(texturePath.length > 0);
+            }
+            
+
+            // Parse Textures
+            for (aiTextureType type : s_TextureTypes) {
                 const bool bHasTexture = (material->GetTextureCount(type) > 0);
-                aiString texturePath;
                 if (bHasTexture && (material->GetTexture(type, 0, &texturePath) == AI_SUCCESS)) {
                     TextureLoadingContext textureContext{};
                     textureContext.filename = texturePath.data;
                     textureContext.type = type;
-                    // If the file is binary, we'll need to load the imageData in place
-                    // Otherwise the file memory gets cleaned up with the Importer
-                    // I could move the Importer to the MeshLoadingContext, then
-                    // I'd be able to parse the scene for this information later on.
-                    if (bIsBinary) {
-                        auto texture = scene->GetEmbeddedTexture(texturePath.C_Str());
-                        if (texture) {
-                            const size_t texSize = (texture->mHeight == 0) ? texture->mWidth : texture->mWidth * texture->mHeight;
-                            SDL_IOStream* ioStream = SDL_IOFromMem(texture->pcData, texSize);
-                            if (ioStream) {
-                                SDL_Surface* image = IMG_LoadTyped_IO(ioStream, true, texture->achFormatHint);
-                                image = LoadImageShared(image, 4);
-                                if (image) {
-                                    textureContext.imageData = image;
-                                }
-                            }
-                        }
-                    }
+                    Texture texture;
+                    texture.type = type;
                     
                     outContext.textureInfoMap.emplace(textureContext.filename, textureContext);
-                    outMesh.textureIdMap[textureContext.filename] = {.texture = nullptr, .type = type};
+                    outMesh.textureIdMap.emplace(textureContext.filename, texture);
                 }
             }
+            
+            outContext.materialInfos.push_back(materialContext);
         }
     }
+    SDL_assert(outMesh.materials.size() == outContext.materialInfos.size());
 }
 
 void Renderer::Clear() {
@@ -881,6 +1032,7 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
         s_lighting.pointLights[0].enabled = true;
     }
     
+    SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);
     // Draw Meshes
     for (auto& node : mNodesThisFrame) {
         if (!node->mDisplay->mShow) continue;
@@ -888,28 +1040,39 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
         const Mesh& mesh = *(node->mDisplay->mMesh);
         const TransformComponent& transform = *(node->mTransform);
         SDL_GPUTexture* diffuseTexture = GetTexture(mesh, aiTextureType_BASE_COLOR);
-        SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);
-        std::vector<SDL_GPUBufferBinding> bindings{{mesh.vertexBuffer, 0}};
-        SDL_BindGPUVertexBuffers(renderPass, 0, bindings.data(), static_cast<Uint32>(bindings.size()));
+        std::vector<SDL_GPUBufferBinding> vertexBufferBindings{{mesh.vertexBuffer, 0}};
+        SDL_BindGPUVertexBuffers(renderPass, 0, vertexBufferBindings.data(), static_cast<Uint32>(vertexBufferBindings.size()));
         SDL_GPUBufferBinding indexBufferBinding{mesh.indexBuffer, 0};
         SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-        SDL_GPUTextureSamplerBinding textureSamplerBinding{diffuseTexture, mSamplers[mesh.samplerTypeIndex]};
-        SDL_BindGPUFragmentSamplers(renderPass, 0, &textureSamplerBinding, 1);
 
-        // model matrix
-        glm::mat4 modelMatrix = glm::mat4(1.0f);
-        modelMatrix = glm::translate(modelMatrix, transform.mPosition);
-        modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.y), glm::vec3(0, 1, 0));
-        modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.x), glm::vec3(1, 0, 0));
-        modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.z), glm::vec3(0, 0, 1));
-        modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));
-        
-        SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraGPU));
-        SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &modelMatrix, sizeof(glm::mat4));
-        SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &s_lighting.pointLights[0].position, sizeof(glm::vec3));
-        SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &s_lighting.pointLights[0].color, sizeof(glm::vec3));
-
-        SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mesh.indices.size()), 1, 0, 0, 0);
+        for (const MeshEntry& submesh : mesh.submeshes) {
+            const PBRMaterial& material = mesh.materials[submesh.materialIndex];
+            std::vector<SDL_GPUTextureSamplerBinding> samplerBindings = {
+                {material.pAlbedo.texture   , material.pAlbedo.sampler   },
+                //{material.pNormalMap.texture, material.pNormalMap.sampler},
+                //{material.pEmissive.texture , material.pEmissive.sampler },
+                //{material.pMetallic.texture , material.pMetallic.sampler },
+                //{material.pRoughness.texture, material.pRoughness.sampler},
+                //{material.pAO.texture       , material.pAO.sampler       },
+            };
+            SDL_BindGPUFragmentSamplers(renderPass, 0, samplerBindings.data(), static_cast<Uint32>(samplerBindings.size()));
+    
+            // model matrix
+            //glm::mat4 modelMatrix = glm::mat4(1.0f);
+            glm::mat4 modelMatrix = submesh.transformation;
+            modelMatrix = glm::translate(modelMatrix, transform.mPosition);
+            modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.z), glm::vec3(0, 0, 1));
+            modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.y), glm::vec3(0, 1, 0));
+            modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.x), glm::vec3(1, 0, 0));
+            modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));
+            
+            SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraGPU));
+            SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &modelMatrix, sizeof(glm::mat4));
+            SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &s_lighting.pointLights[0].position, sizeof(glm::vec3));
+            SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &s_lighting.pointLights[0].color, sizeof(glm::vec3));
+    
+            SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mesh.indices.size()), 1, 0, submesh.baseIndex, submesh.baseVertex);
+        }
     }
 
     SDL_EndGPURenderPass(renderPass);
@@ -984,6 +1147,7 @@ void Renderer::ResizeWindow() {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_GetWindowSize failed: %s", SDL_GetError());
         return;
     }
+    mCachedWindowCenter = {windowWidth/2, windowHeight/2};
     SDL_GPUTextureCreateInfo colorTextureCreateInfo{
         .type = SDL_GPU_TEXTURETYPE_2D,
         .format = SDL_GetGPUSwapchainTextureFormat(mSDLDevice, mWindow),

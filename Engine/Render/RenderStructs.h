@@ -2,7 +2,14 @@
 
 #include <assimp/material.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <SDL3/SDL_gpu.h>
+#include <stack>
+
+#define IDENTITY_MATRIX	  glm::mat4(1.0f, 0.0f, 0.0f, 0.0f, \
+									0.0f, 1.0f, 0.0f, 0.0f, \
+									0.0f, 0.0f, 1.0f, 0.0f, \
+									0.0f, 0.0f, 0.0f, 1.0f);\
 
 struct SunLight {
 	glm::vec3 direction = {-1.0f, -1.0f, -1.0f};
@@ -30,23 +37,69 @@ struct Vertex {
 	glm::vec2 uv;
 };
 
-struct MeshTexture {
-	SDL_GPUTexture* texture = nullptr;
+struct Texture {
+	Texture() {}
+	Texture(aiTextureType type) { type = type; }
+	Texture(const Texture& other) {
+		type = other.type;
+		texture = other.texture;
+		sampler = other.sampler;
+	}
 	aiTextureType type = aiTextureType_NONE;
+	SDL_GPUTexture* texture = nullptr;
+	SDL_GPUSampler* sampler = nullptr;
+};
+
+struct PBRMaterial {
+	bool isMetal    = false;
+	float roughness = 0.0f;
+	glm::vec3 ambient  = {1.0f, 1.0f, 1.0f};
+	glm::vec3 diffuse  = {1.0f, 1.0f, 1.0f};
+	glm::vec3 specular = {1.0f, 1.0f, 1.0f};
+	Texture pAlbedo    = {aiTextureType_BASE_COLOR};
+	Texture pNormalMap = {aiTextureType_NORMAL_CAMERA};
+	Texture pEmissive  = {aiTextureType_EMISSION_COLOR};
+	Texture pMetallic  = {aiTextureType_METALNESS};
+	Texture pRoughness = {aiTextureType_DIFFUSE_ROUGHNESS};
+	Texture pAO 	   = {aiTextureType_AMBIENT_OCCLUSION};
+};
+
+struct MeshEntry {
+	uint32_t baseVertex  = 0;
+	uint32_t baseIndex 	 = 0;
+	uint32_t numVertices = 0;
+	uint32_t numIndices  = 0;
+	uint32_t validFaces  = 0;
+	int nodeId 	 		 = 0;
+	int materialIndex    = -1;
+	glm::mat4 transformation; // cached & pre-transformed
+};
+
+// TODO: Put these elsewhere, like a SceneManager
+struct SceneNode {
+	SceneNode() {}
+	SceneNode(int parentId, int id) {
+		parentId = parentId;
+		id = id;
+	}
+	int parentId = -1;
+	int id = 0;
+	glm::mat4 transformation = glm::mat4(1.0f);
 };
 
 struct Mesh {
-	glm::vec3 mRootPosition = {0.0f, 0.0f, 0.0f}; // Base position in local space
-	glm::vec3 mRootOrientation = {0.0f, 0.0f, 0.0f}; // Base orientation in degrees
-	glm::vec3 mRootScale = {1.0f, 1.0f, 1.0f};
 	std::vector<Vertex> vertices;
 	std::vector<Uint32> indices;
 	uint8_t samplerTypeIndex = 0;
 	SDL_GPUBuffer* vertexBuffer = nullptr;
 	SDL_GPUBuffer* indexBuffer = nullptr;
 	//std::unordered_map<aiTextureType, SDL_GPUTexture*> textureMap;
-	std::unordered_map<std::string, MeshTexture> textureIdMap;
+	std::unordered_map<std::string, Texture> textureIdMap;
+	std::vector<MeshEntry> submeshes;
+	std::vector<PBRMaterial> materials;
+	std::unordered_map<uint32_t, SceneNode> nodeMap;
 	std::string filepath;
+	glm::mat4 globalTransform;
 	bool bDoNotRender = false;
 };
 
@@ -72,3 +125,16 @@ struct GridParamsFragGPU
 	float thickness;
 	float scroll;
 };
+
+static void UpdateCachedTransformations(Mesh& mesh) {
+	for (MeshEntry& submesh : mesh.submeshes) {
+		SceneNode& node = mesh.nodeMap[submesh.nodeId];
+		glm::mat4 worldTransform = node.transformation;
+		int nextId = node.parentId;
+		while (nextId > -1) {
+			worldTransform *= mesh.nodeMap[nextId].transformation;
+			nextId = mesh.nodeMap[nextId].parentId;
+		}
+		submesh.transformation = worldTransform;
+	}
+}
