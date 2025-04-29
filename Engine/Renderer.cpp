@@ -1071,7 +1071,7 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
             SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &s_lighting.pointLights[0].position, sizeof(glm::vec3));
             SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &s_lighting.pointLights[0].color, sizeof(glm::vec3));
     
-            SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mesh.indices.size()), 1, 0, submesh.baseIndex, submesh.baseVertex);
+            SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(submesh.numIndices), 1, submesh.baseIndex, submesh.baseVertex, 0);
         }
     }
 
