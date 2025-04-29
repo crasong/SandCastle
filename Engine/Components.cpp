@@ -4,6 +4,8 @@
 #include <assimp/postprocess.h>
 #include <Entity.h>
 #include <imgui.h>
+#include <queue>
+#include <stack>
 #include <string>
 
 void TransformComponent::BeginFrame() {
@@ -36,6 +38,22 @@ void DisplayComponent::BeginFrame() {
 void DisplayComponent::DisplaySceneDetails() {
     if (!scene) {
         scene = importer.ReadFile(mMesh->filepath, aiProcess_Triangulate | aiProcess_PreTransformVertices | aiProcess_FlipUVs);
+        
+        rootUI.node = scene->mRootNode;
+        std::queue<UINode> queue;
+        queue.push(rootUI);
+        while (!queue.empty()) {
+            UINode& curr = queue.front();
+            queue.pop();
+            for (size_t i = 0; i < curr.node->mNumChildren; ++i) {
+                UINode child;
+                child.node = curr.node->mChildren[i];
+                curr.node->mTransformation;
+                curr.children.push_back(child);
+                queue.push(child);
+            }
+            //curr.children.size();
+        }
     }
 
     const bool bIsBinary = scene->mNumTextures > 0;
@@ -96,6 +114,9 @@ void DisplayComponent::DisplaySceneDetails() {
                 ImGui::Text("NULL");
             }
         }
+        ImGui::TreePop();
+    }
+    if (ImGui::TreeNode("Nodes")) {
         ImGui::TreePop();
     }
     ImGui::EndChild();

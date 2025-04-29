@@ -56,6 +56,12 @@ public:
 
 class DisplayComponent : public Component{
 public:
+    struct UINode {
+        bool show = false;
+        std::vector<UINode> children;
+        aiNode* node = nullptr;
+    };
+
     DisplayComponent() = default;
     explicit DisplayComponent(Mesh* mesh) : mMesh(mesh) {}
 
@@ -67,6 +73,7 @@ private:
     void DisplaySceneDetails();
     Assimp::Importer importer;
     const aiScene* scene = nullptr;
+    UINode rootUI;
 };
 
 class CameraComponent : public Component{
@@ -105,7 +112,7 @@ public:
 };
 
 class UIComponent : public Component{
-    public:
+public:
     UIComponent() = default;
 
     void BeginFrame() override;
