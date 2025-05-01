@@ -38,20 +38,16 @@ public:
     };
 
     struct TextureLoadingContext {
+        bool bUseFallback = false;
         aiTextureType          type = aiTextureType_NONE;
         std::string            filename;
+        glm::u32vec2           imageSize;
         SDL_Surface*           imageData      = nullptr;
         SDL_GPUTransferBuffer* transferBuffer = nullptr;
     };
 
     struct MaterialLoadingContext {
-        // this assumes PBR 
-        std::string albedo;
-        std::string normal;
-        std::string emissive;
-        std::string metallic;
-        std::string roughness;
-        std::string ao;
+        std::unordered_map<aiTextureType, TextureLoadingContext> textureContextMap;
     };
 
     struct NodeLoadingContext {
@@ -154,6 +150,11 @@ private:
         SDL_GPUTexture*& outTexture,
         SDL_GPUTransferBuffer*& outTransferBuffer
     );
+    bool CreateFallbackTexture(
+        aiTextureType type, 
+        SDL_GPUTexture*& outTexture, 
+        SDL_GPUTransferBuffer*& outTransferBuffer
+    );
 
     SDL_GPUShader* LoadShader(
         SDL_GPUDevice* device,
@@ -175,6 +176,7 @@ private:
     SDL_Window* mWindow = nullptr;
     SDL_GPUDevice* mSDLDevice = nullptr;
     SDL_GPUTexture* mDepthTexture = nullptr;
+    SDL_GPUTexture* mFallbackTexture = nullptr;
     
     std::vector<SDL_GPUSampler*> mSamplers;
     std::unordered_map<RenderMode, SDL_GPUGraphicsPipeline*> mPipelines;

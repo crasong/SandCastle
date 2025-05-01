@@ -40,6 +40,10 @@ struct Vertex {
 struct Texture {
 	Texture() {}
 	Texture(aiTextureType type) { type = type; }
+	Texture(SDL_GPUTexture* texture, SDL_GPUSampler* sampler) {
+		texture = texture;
+		sampler = sampler;
+	}
 	Texture(const Texture& other) {
 		type = other.type;
 		texture = other.texture;
@@ -52,17 +56,7 @@ struct Texture {
 
 struct PBRMaterial {
 	bool isValid    = false;
-	bool isMetal    = false;
-	float roughness = 0.0f;
-	glm::vec3 ambient  = {1.0f, 1.0f, 1.0f};
-	glm::vec3 diffuse  = {1.0f, 1.0f, 1.0f};
-	glm::vec3 specular = {1.0f, 1.0f, 1.0f};
-	Texture pAlbedo    = {aiTextureType_BASE_COLOR};
-	Texture pNormalMap = {aiTextureType_NORMAL_CAMERA};
-	Texture pEmissive  = {aiTextureType_EMISSION_COLOR};
-	Texture pMetallic  = {aiTextureType_METALNESS};
-	Texture pRoughness = {aiTextureType_DIFFUSE_ROUGHNESS};
-	Texture pAO 	   = {aiTextureType_AMBIENT_OCCLUSION};
+	std::unordered_map<aiTextureType, Texture> textureMap;
 };
 
 struct MeshEntry {
@@ -94,7 +88,6 @@ struct Mesh {
 	uint8_t samplerTypeIndex = 0;
 	SDL_GPUBuffer* vertexBuffer = nullptr;
 	SDL_GPUBuffer* indexBuffer = nullptr;
-	//std::unordered_map<aiTextureType, SDL_GPUTexture*> textureMap;
 	std::unordered_map<std::string, Texture> textureIdMap;
 	std::vector<MeshEntry> submeshes;
 	std::vector<PBRMaterial> materials;
@@ -138,4 +131,11 @@ static void UpdateCachedTransformations(Mesh& mesh) {
 		}
 		submesh.transformation = worldTransform;
 	}
+}
+
+static void GetValidTextureBindings(const PBRMaterial& material, std::vector<SDL_GPUTextureSamplerBinding>& outBindings) {
+	for (auto& [type, texture] : material.textureMap) {
+		outBindings.push_back({texture.texture, texture.sampler});
+	}
+	SDL_assert(outBindings.size() == material.textureMap.size());
 }

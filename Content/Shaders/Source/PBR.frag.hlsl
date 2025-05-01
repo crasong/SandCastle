@@ -1,9 +1,9 @@
 Texture2D<float4> AlbedoTex    : register(t0, space2);
-//Texture2D<float4> NormalTex    : register(t1, space2);
-//Texture2D<float4> EmissiveTex  : register(t2, space2);
-//Texture2D<float4> MetallicTex  : register(t2, space2);
+Texture2D<float4> NormalTex    : register(t1, space2);
+Texture2D<float4> EmissiveTex  : register(t2, space2);
+//Texture2D<float4> MetallicTex  : register(t3, space2);
 //Texture2D<float4> RoughnessTex : register(t4, space2);
-//Texture2D<float4> AOTex        : register(t3, space2);
+//Texture2D<float4> AOTex        : register(t5, space2);
 SamplerState Sampler    : register(s0, space2);
 
 cbuffer Light : register(b0, space3) 

@@ -64,20 +64,13 @@ static unsigned int s_ModelLoadingFlags = aiProcess_Triangulate | aiProcess_Flip
                                         //| aiProcess_TransformUVCoords | aiProcess_GenBoundingBoxes | aiProcess_CalcTangentSpace;
                                         
 static const std::vector<aiTextureType> s_TextureTypes = {
-    //aiTextureType_BASE_COLOR,
-    //aiTextureType_NORMAL_CAMERA,
-    //aiTextureType_EMISSION_COLOR,
-    //aiTextureType_METALNESS,
-    //aiTextureType_DIFFUSE_ROUGHNESS,
-    //aiTextureType_AMBIENT_OCCLUSION,
-    
     // These types work for DamagedHelmet
     aiTextureType_BASE_COLOR,
     aiTextureType_NORMALS,
     aiTextureType_EMISSIVE,
-    aiTextureType_METALNESS,
-    aiTextureType_DIFFUSE_ROUGHNESS,
-    aiTextureType_LIGHTMAP,
+    //aiTextureType_METALNESS,
+    //aiTextureType_DIFFUSE_ROUGHNESS,
+    //aiTextureType_LIGHTMAP,
 };
 
 Renderer::Renderer() {}
@@ -136,7 +129,7 @@ bool Renderer::InitPipelines() {
         return false;
     }
 
-    SDL_GPUShader* fragmentShader = LoadShader(mSDLDevice, "PBR.frag", 1, 1, 0, 0);
+    SDL_GPUShader* fragmentShader = LoadShader(mSDLDevice, "PBR.frag", s_TextureTypes.size(), 1, 0, 0);
     if (!fragmentShader) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Vertex Shader failed to load");
         return false;
@@ -388,53 +381,62 @@ bool Renderer::InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh) {
         return false;
     }
 
-    // Create Texture resources
-    for (auto& [textype, texcontext] : context.textureInfoMap) {
-        // First, load the image files. See if they are embedded in the scene file
-        if (const bool bTexturesEmbedded = context.scene->mNumTextures > 0) {
-            if (const aiTexture* texture = context.scene->GetEmbeddedTexture(texcontext.filename.c_str())) {
-                const size_t texSize = (texture->mHeight == 0) ? texture->mWidth : texture->mWidth * texture->mHeight;
-                if (SDL_IOStream* ioStream = SDL_IOFromMem(texture->pcData, texSize)) {
-                    if (SDL_Surface* image = IMG_LoadTyped_IO(ioStream, true, texture->achFormatHint)) {
-                        texcontext.imageData = LoadImageShared(image, 4);
-                    }
-                }
-            }
-        }
-        else {
-            texcontext.imageData = LoadImage(modelDescriptor.foldername, modelDescriptor.subFoldername, texcontext.filename, 4);
-        }
-        SDL_assert(texcontext.imageData);
-        
-        SDL_GPUTexture* gputexture = nullptr;
-        if (!CreateTextureGPUResources(texcontext.imageData, texcontext.filename, gputexture, texcontext.transferBuffer)) {
-            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create texture GPU resources");
-            return false;
-        }
-        mesh.textureIdMap[textype].texture = gputexture;
-        mesh.textureIdMap[textype].sampler = mSamplers[1];
-        gputexture = nullptr;
-    }
-    SDL_assert(mesh.textureIdMap.size() == context.textureInfoMap.size());
-
-    // Update the Materials with the loaded textures
+    const bool bTexturesEmbedded = context.scene->mNumTextures > 0;
     for (size_t i = 0; i < mesh.materials.size(); ++i) {
         MaterialLoadingContext& matInfo = context.materialInfos[i];
-        //PBRMaterial& material = mesh.materials[i];
-        mesh.materials[i].pAlbedo    = mesh.textureIdMap[matInfo.albedo];
-        mesh.materials[i].pNormalMap = mesh.textureIdMap[matInfo.normal];
-        mesh.materials[i].pEmissive  = mesh.textureIdMap[matInfo.emissive];
-        mesh.materials[i].pMetallic  = mesh.textureIdMap[matInfo.metallic];
-        mesh.materials[i].pRoughness = mesh.textureIdMap[matInfo.roughness];
-        mesh.materials[i].pAO        = mesh.textureIdMap[matInfo.ao];
-        mesh.materials[i].isValid = (
-            mesh.materials[i].pAlbedo.texture
-         && mesh.materials[i].pNormalMap.texture
-         //&& mesh.materials[i].pEmissive.texture
-         && mesh.materials[i].pMetallic.texture
-         //&& mesh.materials[i].pRoughness.texture
-         && mesh.materials[i].pAO.texture
-        );
+        PBRMaterial& meshMat = mesh.materials[i];
+        for (auto& [texType, texInfo] : matInfo.textureContextMap) {
+            Texture& meshTexture = mesh.textureIdMap[texInfo.filename];
+            if (meshTexture.texture) { // We've already loaded it
+                aiTextureType otherType = texType;
+                aiTextureType typeToAdd = texType;
+                if (texType == aiTextureType_DIFFUSE_ROUGHNESS || texType == aiTextureType_METALNESS) {
+                    otherType = (texType == aiTextureType_DIFFUSE_ROUGHNESS) ? aiTextureType_METALNESS : aiTextureType_DIFFUSE_ROUGHNESS;
+                    typeToAdd = (meshMat.textureMap.contains(texType)) ? otherType : texType;
+                }
+                else {
+                    SDL_assert(meshTexture.type == texType);
+                }
+                meshMat.textureMap.emplace(typeToAdd, meshTexture);
+                matInfo.textureContextMap[typeToAdd] = context.textureInfoMap[matInfo.textureContextMap[otherType].filename];
+                continue;
+            }
+            if (texInfo.bUseFallback) {
+                CreateFallbackTexture(texType, meshTexture.texture, texInfo.transferBuffer);
+                texInfo.imageSize = {1, 1};
+            }
+            else {
+                if (bTexturesEmbedded) {
+                    if (const aiTexture* texture = context.scene->GetEmbeddedTexture(texInfo.filename.c_str())) {
+                        const size_t texSize = (texture->mHeight == 0) ? texture->mWidth : texture->mWidth * texture->mHeight;
+                        if (SDL_IOStream* ioStream = SDL_IOFromMem(texture->pcData, texSize)) {
+                            if (SDL_Surface* image = IMG_LoadTyped_IO(ioStream, true, texture->achFormatHint)) {
+                                texInfo.imageData = LoadImageShared(image, 4);
+                            }
+                        }
+                    }
+                }
+                else {
+                    texInfo.imageData = LoadImage(modelDescriptor.foldername, modelDescriptor.subFoldername, texInfo.filename, 4);
+                }
+                SDL_assert(texInfo.imageData);
+
+                texInfo.imageSize = {static_cast<Uint32>(texInfo.imageData->w), static_cast<Uint32>(texInfo.imageData->h)};
+                
+                if (!CreateTextureGPUResources(texInfo.imageData, texInfo.filename, meshTexture.texture, texInfo.transferBuffer)) {
+                    SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create texture GPU resources");
+                    return false;
+                }
+                SDL_assert(meshTexture.texture);
+            }
+            SDL_assert(texInfo.transferBuffer);
+            
+            meshTexture.type = texType;
+            meshTexture.sampler = mSamplers[1];
+            meshMat.textureMap.emplace(texType, meshTexture);
+            context.textureInfoMap.emplace(texInfo.filename, texInfo);
+        }
+        SDL_assert(meshMat.textureMap.size() == s_TextureTypes.size());
     }
 
     // Upload the transfer data to the vertex buffer
@@ -451,12 +453,14 @@ bool Renderer::InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh) {
         SDL_UploadToGPUBuffer(copyPass, &transferBufferLocation, &bufferRegion, false);
     }
     {   // upload texture data
-        for (auto& [textype, context] : context.textureInfoMap) {
-            SDL_Surface* imageData = context.imageData;
-            SDL_GPUTexture* texture = mesh.textureIdMap[textype].texture;
-            SDL_GPUTextureTransferInfo textureTransferInfo{ .transfer_buffer = context.transferBuffer, .offset = 0 };
-            SDL_GPUTextureRegion textureRegion{ .texture = texture, .w = static_cast<Uint32>(imageData->w), .h = static_cast<Uint32>(imageData->h), .d = 1 };
-            SDL_UploadToGPUTexture(copyPass, &textureTransferInfo, &textureRegion, false);
+        for (auto& matInfo : context.materialInfos) {
+            for (auto& [texType, texInfo] : matInfo.textureContextMap) {
+                SDL_assert(texInfo.transferBuffer);
+                SDL_GPUTexture* texture = mesh.textureIdMap[texInfo.filename].texture;
+                SDL_GPUTextureTransferInfo textureTransferInfo{ .transfer_buffer = texInfo.transferBuffer, .offset = 0 };
+                SDL_GPUTextureRegion textureRegion{ .texture = texture, .w = texInfo.imageSize.x, .h = texInfo.imageSize.y, .d = 1 };
+                SDL_UploadToGPUTexture(copyPass, &textureTransferInfo, &textureRegion, false);
+            }
         }
     }
 
@@ -465,9 +469,9 @@ bool Renderer::InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh) {
 
     SDL_ReleaseGPUTransferBuffer(mSDLDevice, vertexTransferBuffer);
     SDL_ReleaseGPUTransferBuffer(mSDLDevice, indexTransferBuffer);
-    for (auto& [filename, context] : context.textureInfoMap) {
-        SDL_DestroySurface(context.imageData);
-        SDL_ReleaseGPUTransferBuffer(mSDLDevice, context.transferBuffer);
+    for (auto& [filename, texInfo] : context.textureInfoMap) {
+        SDL_DestroySurface(texInfo.imageData);
+        SDL_ReleaseGPUTransferBuffer(mSDLDevice, texInfo.transferBuffer);
     }
     return true;
 }
@@ -578,6 +582,23 @@ bool Renderer::CreateTextureGPUResources(
     return true;
 }
 
+bool Renderer::CreateFallbackTexture(
+    aiTextureType type, 
+    SDL_GPUTexture*& outTexture, 
+    SDL_GPUTransferBuffer*& outTransferBuffer
+) {
+    SDL_Surface* surface = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_ABGR8888);
+    // TODO: Figure out how to fill the pixel with the appropriate color information
+    // this will depend on the type of texture, and we should follow the gltf spec
+    // For emissive: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#_material_emissivetexture
+
+    std::string name = std::format("{}-Fallback", aiTextureTypeToString(type));
+    bool success = CreateTextureGPUResources(surface, name, outTexture, outTransferBuffer);
+
+    SDL_DestroySurface(surface);
+    return success;
+}
+
 SDL_GPUShader* Renderer::LoadShader(
     SDL_GPUDevice* device,
     const std::string& shaderFilename,
@@ -661,6 +682,7 @@ SDL_Surface* Renderer::LoadImage(const std::string& foldername, const std::strin
     std::filesystem::path texturePath = std::format("{}/Content/Models/{}/{}/{}", BasePath, foldername, subfoldername, texturename);
     std::string filePathString = texturePath.make_preferred().string();
     SDL_Surface* image = IMG_Load(filePathString.c_str());
+    SDL_assert(image);
     return LoadImageShared(image, desiredChannels);
 }
 
@@ -708,7 +730,7 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Mesh& outMesh, 
     ParseNodes(outMesh, outContext);
     ParseMaterials(scene, outMesh, outContext);
     ParseTextures(scene, outMesh, outContext);
-    SDL_assert(outMesh.textureIdMap.size() == outContext.textureInfoMap.size());
+    //SDL_assert(outMesh.textureIdMap.size() == outContext.textureInfoMap.size());
     outMesh.samplerTypeIndex = modelDescriptor.samplerTypeIndex;
     outMesh.filepath = modelPathString;
     outMesh.bDoNotRender = scene->mNumTextures > 0;
@@ -870,59 +892,21 @@ void Renderer::ParseTextures(const aiScene* scene, Mesh& outMesh, MeshLoadingCon
         auto material = scene->mMaterials[i];
         if (material) {
             MaterialLoadingContext materialContext{};
-            aiColor4D fetchedColor;
-            if (material->Get(AI_MATKEY_COLOR_AMBIENT, fetchedColor) == AI_SUCCESS) {
-                outMesh.materials[i].ambient = {fetchedColor.r, fetchedColor.g, fetchedColor.b};
-            }
-            if (material->Get(AI_MATKEY_COLOR_DIFFUSE, fetchedColor) == AI_SUCCESS) {
-                outMesh.materials[i].diffuse = {fetchedColor.r, fetchedColor.g, fetchedColor.b};
-            }
-            if (material->Get(AI_MATKEY_COLOR_SPECULAR, fetchedColor) == AI_SUCCESS) {
-                outMesh.materials[i].specular = {fetchedColor.r, fetchedColor.g, fetchedColor.b};
-            }
-
             aiString texturePath;
-            if (material->GetTexture(s_TextureTypes[0], 0, &texturePath) == AI_SUCCESS) {
-                materialContext.albedo = texturePath.C_Str();
-                SDL_assert(texturePath.length > 0);
-            }
-            if (material->GetTexture(s_TextureTypes[1], 0, &texturePath) == AI_SUCCESS) {
-                materialContext.normal = texturePath.C_Str();
-                SDL_assert(texturePath.length > 0);
-            }
-            if (material->GetTexture(s_TextureTypes[2], 0, &texturePath) == AI_SUCCESS) {
-                materialContext.emissive = texturePath.C_Str();
-                SDL_assert(texturePath.length > 0);
-            }
-            if (material->GetTexture(s_TextureTypes[3], 0, &texturePath) == AI_SUCCESS) {
-                materialContext.metallic = texturePath.C_Str();
-                SDL_assert(texturePath.length > 0);
-            }
-            if (material->GetTexture(s_TextureTypes[4], 0, &texturePath) == AI_SUCCESS) {
-                materialContext.roughness = texturePath.C_Str();
-                SDL_assert(texturePath.length > 0);
-            }
-            if (material->GetTexture(s_TextureTypes[5], 0, &texturePath) == AI_SUCCESS) {
-                materialContext.ao = texturePath.C_Str();
-                SDL_assert(texturePath.length > 0);
-            }
-            
-
-            // Parse Textures
             for (aiTextureType type : s_TextureTypes) {
-                const bool bHasTexture = (material->GetTextureCount(type) > 0);
-                if (bHasTexture && (material->GetTexture(type, 0, &texturePath) == AI_SUCCESS)) {
-                    TextureLoadingContext textureContext{};
+                TextureLoadingContext textureContext{};
+                textureContext.type = type;
+                if (material->GetTexture(type, 0, &texturePath) == AI_SUCCESS) {
                     textureContext.filename = texturePath.data;
-                    textureContext.type = type;
-                    Texture texture;
-                    texture.type = type;
-                    
-                    outContext.textureInfoMap.emplace(textureContext.filename, textureContext);
-                    outMesh.textureIdMap.emplace(textureContext.filename, texture);
                 }
+                else {
+                    textureContext.bUseFallback = true;
+                    textureContext.filename = aiTextureTypeToString(type);
+                }
+                materialContext.textureContextMap.emplace(type, textureContext);
             }
-            
+            SDL_assert(materialContext.textureContextMap.size() == s_TextureTypes.size());
+
             outContext.materialInfos.push_back(materialContext);
         }
     }
@@ -1065,14 +1049,8 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
 
         for (const MeshEntry& submesh : mesh.submeshes) {
             const PBRMaterial& material = mesh.materials[submesh.materialIndex];
-            std::vector<SDL_GPUTextureSamplerBinding> samplerBindings = {
-                {material.pAlbedo.texture   , mSamplers[1]}, //material.pAlbedo.sampler   },
-                //{material.pNormalMap.texture, mSamplers[1]}, //material.pNormalMap.sampler},
-                //{material.pEmissive.texture , mSamplers[1]}, //material.pEmissive.sampler },
-                //{material.pMetallic.texture , mSamplers[1]}, //material.pMetallic.sampler },
-                //{material.pRoughness.texture, material.pRoughness.sampler},
-                //{material.pAO.texture       , mSamplers[1]}, //material.pAO.sampler       },
-            };
+            std::vector<SDL_GPUTextureSamplerBinding> samplerBindings;
+            GetValidTextureBindings(material, samplerBindings);
             SDL_BindGPUFragmentSamplers(renderPass, 0, samplerBindings.data(), static_cast<Uint32>(samplerBindings.size()));
     
             // model matrix
