@@ -48,26 +48,26 @@ static std::vector<Renderer::ModelDescriptor> Models =
     {"SciFiHelmet", GLTF_PATH, GLTF_EXT, "", 1, false, false, false},
 };
 static std::vector<Vertex> s_GridVertices = {
-    {{-0.5f, 0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-    {{0.5f, 0.0f, -0.5f} , {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-    {{-0.5f, 0.0f, 0.5f} , {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
-    {{0.5f, 0.0f, 0.5f}  , {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+    {{-0.5f, 0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{0.5f, 0.0f, -0.5f} , {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-0.5f, 0.0f, 0.5f} , {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{0.5f, 0.0f, 0.5f}  , {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
 };
 static std::vector<Uint32> s_GridIndices = {
     0, 1, 2,
     1, 2, 3,
 };
 static std::vector<glm::vec3> s_PointLightPositions = {
-    {},
+    {0.0f, 2.0f, 0.0f},
 };
-static unsigned int s_ModelLoadingFlags = aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals | aiProcess_JoinIdenticalVertices;
+static unsigned int s_ModelLoadingFlags = aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals | aiProcess_JoinIdenticalVertices | aiProcess_CalcTangentSpace;
                                         //| aiProcess_TransformUVCoords | aiProcess_GenBoundingBoxes | aiProcess_CalcTangentSpace;
                                         
 static const std::vector<aiTextureType> s_TextureTypes = {
     // These types work for DamagedHelmet
     aiTextureType_BASE_COLOR,
     aiTextureType_NORMALS,
-    aiTextureType_EMISSIVE,
+    //aiTextureType_EMISSIVE,
     //aiTextureType_METALNESS,
     //aiTextureType_DIFFUSE_ROUGHNESS,
     //aiTextureType_LIGHTMAP,
@@ -197,11 +197,19 @@ bool Renderer::InitPipelines() {
     vertexBufferDescription.instance_step_rate = 0;
     std::vector<SDL_GPUVertexBufferDescription> vertexBufferDescriptions{vertexBufferDescription};
 
-    SDL_GPUVertexAttribute vertexPositionAttribute{ 0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0};
-    SDL_GPUVertexAttribute vertexNormalAttribute{ 1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, sizeof(glm::vec3)};
-    SDL_GPUVertexAttribute vertexTextureAttribute{ 2, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, 2 * sizeof(glm::vec3)};
-    std::vector<SDL_GPUVertexAttribute> vertexAttributes{vertexPositionAttribute, vertexNormalAttribute, vertexTextureAttribute};
-    SDL_GPUVertexInputState vertexInputState{ vertexBufferDescriptions.data(), 1, vertexAttributes.data(), 3};
+    SDL_GPUVertexAttribute vertexPositionAttribute { 0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0};
+    SDL_GPUVertexAttribute vertexNormalAttribute   { 1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,     sizeof(glm::vec3)};
+    SDL_GPUVertexAttribute vertexTangentAttribute  { 2, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 2 * sizeof(glm::vec3)};
+    SDL_GPUVertexAttribute vertexBiTangentAttribute{ 3, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 3 * sizeof(glm::vec3)};
+    SDL_GPUVertexAttribute vertexTextureAttribute  { 4, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, 4 * sizeof(glm::vec3)};
+    std::vector<SDL_GPUVertexAttribute> vertexAttributes{
+        vertexPositionAttribute,
+        vertexNormalAttribute,
+        vertexTangentAttribute,
+        vertexBiTangentAttribute,
+        vertexTextureAttribute
+    };
+    SDL_GPUVertexInputState vertexInputState{ vertexBufferDescriptions.data(), 1, vertexAttributes.data(), static_cast<Uint32>(vertexAttributes.size())};
 
     SDL_GPUGraphicsPipelineCreateInfo pipelineCreateInfo{};
     pipelineCreateInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
@@ -831,6 +839,8 @@ void Renderer::ParseVertices(const aiScene* scene, const bool flipX, const bool 
             for (size_t j = 0; j < mesh->mNumVertices; ++j) {
                 aiVector3D position = mesh->mVertices[j];
                 aiVector3D normal = (mesh->HasNormals()) ? mesh->mNormals[j] : aiVector3D(0.0f, 1.0f, 0.0f);
+                aiVector3D tangent = (mesh->HasTangentsAndBitangents()) ? mesh->mTangents[j] : aiVector3D(0.0f);
+                aiVector3D bitangent = (mesh->HasTangentsAndBitangents()) ? mesh->mBitangents[j] : aiVector3D(0.0f);
                 aiVector3D uv = (mesh->HasTextureCoords(0)) ? mesh->mTextureCoords[0][j] : zero3D;
                 outMesh.vertices.push_back({ 
                     .position = {
@@ -842,6 +852,16 @@ void Renderer::ParseVertices(const aiScene* scene, const bool flipX, const bool 
                         normal.x * xMod,
                         normal.y * yMod,
                         normal.z * zMod
+                    },
+                    .tangent = {
+                        tangent.x * xMod,
+                        tangent.y * yMod,
+                        tangent.z * zMod
+                    },
+                    .bitangent = {
+                        bitangent.x * xMod,
+                        bitangent.y * yMod,
+                        bitangent.z * zMod
                     },
                     .uv = {
                         uv.x, 
@@ -957,7 +977,7 @@ void Renderer::InitCameraData(const CameraNode* cameraNode, CameraGPU& outCamera
     outCameraData.view = camera->mViewMatrix;
     outCameraData.projection = camera->mProjectionMatrix;
     outCameraData.viewProjection = outCameraData.projection * outCameraData.view;
-
+    outCameraData.viewPosition = cameraNode->mTransform->mPosition;
 }
 
 void Renderer::RecordGridCommands(RenderPassContext& context) {
@@ -1031,6 +1051,7 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
     static SceneLighting s_lighting;
     if (!s_lighting.inited) {
         s_lighting.inited = true;
+        s_lighting.pointLights[0].position = {0.0f, 2.0f, 0.0f};
         s_lighting.pointLights[0].enabled = true;
     }
     
@@ -1054,7 +1075,6 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
             SDL_BindGPUFragmentSamplers(renderPass, 0, samplerBindings.data(), static_cast<Uint32>(samplerBindings.size()));
     
             // model matrix
-            //glm::mat4 modelMatrix = glm::mat4(1.0f);
             glm::mat4 modelMatrix = submesh.transformation;
             modelMatrix = glm::translate(modelMatrix, transform.mPosition);
             modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.z), glm::vec3(0, 0, 1));

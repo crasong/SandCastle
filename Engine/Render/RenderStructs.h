@@ -32,8 +32,8 @@ struct SceneLighting {
 struct Vertex {
 	glm::vec3 position;
 	glm::vec3 normal;
-	//glm::vec3 tangent;
-	//glm::vec3 bitangent;
+	glm::vec3 tangent;
+	glm::vec3 bitangent;
 	glm::vec2 uv;
 };
 
@@ -103,6 +103,7 @@ struct CameraGPU
 	glm::mat4 view = {1.0f};
 	glm::mat4 projection = {1.0f};
 	glm::mat4 viewProjection = {1.0f};
+	glm::vec3 viewPosition = {0.0f, 0.0f, 0.0f};
 };
 
 //parameters for grid rendering
