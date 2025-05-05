@@ -48,10 +48,10 @@ static std::vector<Renderer::ModelDescriptor> Models =
     {"SciFiHelmet", GLTF_PATH, GLTF_EXT, "", 1, false, false, false},
 };
 static std::vector<Vertex> s_GridVertices = {
-    {{-0.5f, 0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-    {{0.5f, 0.0f, -0.5f} , {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-    {{-0.5f, 0.0f, 0.5f} , {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
-    {{0.5f, 0.0f, 0.5f}  , {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+    {{-10.0f, 0.0f, -10.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{ 10.0f, 0.0f, -10.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-10.0f, 0.0f,  10.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{ 10.0f, 0.0f,  10.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
 };
 static std::vector<Uint32> s_GridIndices = {
     0, 1, 2,
@@ -129,7 +129,7 @@ bool Renderer::InitPipelines() {
         return false;
     }
 
-    SDL_GPUShader* fragmentShader = LoadShader(mSDLDevice, "PBR.frag", s_TextureTypes.size(), 1, 0, 0);
+    SDL_GPUShader* fragmentShader = LoadShader(mSDLDevice, "PBR.frag", static_cast<Uint32>(s_TextureTypes.size()), 1, 0, 0);
     if (!fragmentShader) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Vertex Shader failed to load");
         return false;
@@ -145,21 +145,21 @@ bool Renderer::InitPipelines() {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Grid Fragment Shader failed to load");
         return false;
     }
-
+    
     SDL_GPUColorTargetBlendState colorBlendState{};
     colorBlendState.color_write_mask = SDL_GPU_COLORCOMPONENT_R | SDL_GPU_COLORCOMPONENT_G | SDL_GPU_COLORCOMPONENT_B | SDL_GPU_COLORCOMPONENT_A;
-    colorBlendState.enable_blend = false;
+    colorBlendState.enable_color_write_mask = true;
+    colorBlendState.enable_blend = true;
     colorBlendState.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
     colorBlendState.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
     colorBlendState.color_blend_op = SDL_GPU_BLENDOP_ADD;
     colorBlendState.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
     colorBlendState.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
     colorBlendState.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+
     SDL_GPUColorTargetDescription colorTargetDescription{};
     colorTargetDescription.format = SDL_GetGPUSwapchainTextureFormat(mSDLDevice, mWindow);
-    SDL_GPUColorTargetDescription colorTargetDescription2{};
-    colorTargetDescription2.format = colorTargetDescription.format;
-    colorTargetDescription2.blend_state = colorBlendState;
+    colorTargetDescription.blend_state = colorBlendState;
     std::vector colorTargetDescriptions{colorTargetDescription};
     SDL_GPUGraphicsPipelineTargetInfo pipelineTargetInfo{};
     pipelineTargetInfo.color_target_descriptions = colorTargetDescriptions.data();
@@ -234,6 +234,14 @@ bool Renderer::InitPipelines() {
     }
 
     // create grid pipeline
+    SDL_GPUColorTargetDescription colorTargetDescription2{};
+    colorTargetDescription2.format = colorTargetDescription.format;
+    colorTargetDescription2.blend_state = colorBlendState;
+    //colorTargetDescription2.blend_state.enable_blend = true;
+    std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions2{colorTargetDescriptions2};
+    pipelineTargetInfo.color_target_descriptions = colorTargetDescriptions2.data();
+    pipelineTargetInfo.num_color_targets = static_cast<Uint32>(colorTargetDescriptions2.size());
+
     SDL_GPUGraphicsPipelineCreateInfo gridPipelineCreateInfo{};
     gridPipelineCreateInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
     gridPipelineCreateInfo.vertex_shader = gridVertShader;
@@ -949,8 +957,8 @@ void Renderer::Render(UIManager* uiManager) {
     CameraGPU cameraData{};
     InitCameraData(mCameraNodes[0], context.cameraData);
 
-    RecordGridCommands(context);
     RecordModelCommands(context);
+    RecordGridCommands(context);
     RecordUICommands(context);
 
     EndRenderPass(context);
@@ -983,7 +991,7 @@ void Renderer::InitCameraData(const CameraNode* cameraNode, CameraGPU& outCamera
 void Renderer::RecordGridCommands(RenderPassContext& context) {
     SDL_GPUColorTargetInfo colorTarget{};
     colorTarget.texture = context.swapchainTexture;
-    colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
+    colorTarget.load_op = SDL_GPU_LOADOP_LOAD;
     colorTarget.store_op = SDL_GPU_STOREOP_STORE;
     colorTarget.layer_or_depth_plane = 0;
     colorTarget.clear_color = SDL_FColor{0.3f,0.2f,0.2f,1.0f};
@@ -992,7 +1000,7 @@ void Renderer::RecordGridCommands(RenderPassContext& context) {
     SDL_GPUDepthStencilTargetInfo depthStencilTarget{};
     depthStencilTarget.texture = mDepthTexture;
     depthStencilTarget.clear_depth = 1.0f;
-    depthStencilTarget.load_op = SDL_GPU_LOADOP_CLEAR;
+    depthStencilTarget.load_op = SDL_GPU_LOADOP_LOAD;
     depthStencilTarget.store_op = SDL_GPU_STOREOP_STORE;
     depthStencilTarget.clear_stencil = 0;
     SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(context.commandBuffer, colorTargets.data(), static_cast<Uint32>(colorTargets.size()), &depthStencilTarget);
@@ -1008,16 +1016,16 @@ void Renderer::RecordGridCommands(RenderPassContext& context) {
     SDL_BindGPUIndexBuffer(renderPass, &gridIndexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
     
     glm::mat4 gridModelMatrix = glm::mat4(1.0f);
-    //SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraGPU));
-    //SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &gridModelMatrix, sizeof(glm::mat4));
+    SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraGPU));
+    SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &gridModelMatrix, sizeof(glm::mat4));
     
     GridParamsFragGPU gridParamsFragGPU{};
     gridParamsFragGPU.offset = glm::vec2(0.0f, 0.0f);
     gridParamsFragGPU.numCells = 16;
-    gridParamsFragGPU.thickness = 0.0125f;
+    gridParamsFragGPU.thickness = 0.05f;
     gridParamsFragGPU.scroll = 5.0f;
-    //SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &gridParamsFragGPU, sizeof(GridParamsFragGPU));
-    //SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mGridMesh.indices.size()), 1, 0, 0, 0);
+    SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &gridParamsFragGPU, sizeof(GridParamsFragGPU));
+    SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(mGridMesh.indices.size()), 1, 0, 0, 0);
 
     SDL_EndGPURenderPass(renderPass);
 }
@@ -1025,7 +1033,7 @@ void Renderer::RecordGridCommands(RenderPassContext& context) {
 void Renderer::RecordModelCommands(RenderPassContext& context) {
     SDL_GPUColorTargetInfo colorTarget{};
     colorTarget.texture = context.swapchainTexture;
-    colorTarget.load_op = SDL_GPU_LOADOP_LOAD;
+    colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
     colorTarget.store_op = SDL_GPU_STOREOP_STORE;
     colorTarget.layer_or_depth_plane = 0;
     colorTarget.clear_color = SDL_FColor{0.3f,0.2f,0.2f,1.0f};
@@ -1051,8 +1059,14 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
     static SceneLighting s_lighting;
     if (!s_lighting.inited) {
         s_lighting.inited = true;
-        s_lighting.pointLights[0].position = {0.0f, 2.0f, 0.0f};
+        s_lighting.pointLights[0].position = {0.0f, 5.0f, 0.0f};
         s_lighting.pointLights[0].enabled = true;
+        s_lighting.pointLights[1].position = {5.0f, 5.0f, 0.0f};
+        s_lighting.pointLights[1].enabled = true;
+        s_lighting.pointLights[2].position = {10.0f, 5.0f, 0.0f};
+        s_lighting.pointLights[2].enabled = true;
+        s_lighting.pointLights[3].position = {15.0f, 5.0f, 0.0f};
+        s_lighting.pointLights[3].enabled = true;
     }
     
     SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);

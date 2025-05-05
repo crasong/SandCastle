@@ -100,10 +100,10 @@ struct Mesh {
 // mirrors camera buffer on GPU
 struct CameraGPU
 {
-	glm::mat4 view = {1.0f};
-	glm::mat4 projection = {1.0f};
+	glm::mat4 view 			 = {1.0f};
+	glm::mat4 projection 	 = {1.0f};
 	glm::mat4 viewProjection = {1.0f};
-	glm::vec3 viewPosition = {0.0f, 0.0f, 0.0f};
+	glm::vec3 viewPosition   = {0.0f, 0.0f, 0.0f};
 };
 
 //parameters for grid rendering

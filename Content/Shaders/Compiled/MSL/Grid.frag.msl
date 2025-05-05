@@ -3,15 +3,66 @@
 
 using namespace metal;
 
+struct type_Params
+{
+    float2 u_offset;
+    int u_numCells;
+    float u_thickness;
+    float u_scroll;
+};
+
 struct main0_out
 {
     float4 out_var_SV_Target [[color(0)]];
 };
 
-fragment main0_out main0()
+struct main0_in
+{
+    float3 in_var_POSITION0 [[user(locn0)]];
+};
+
+fragment main0_out main0(main0_in in [[stage_in]], constant type_Params& Params [[buffer(0)]])
 {
     main0_out out = {};
-    out.out_var_SV_Target = float4(0.2588235437870025634765625, 0.96078431606292724609375, 0.690196096897125244140625, 1.0);
+    float _39 = dfdx(in.in_var_POSITION0.x);
+    float _40 = dfdy(in.in_var_POSITION0.x);
+    float _44 = dfdx(in.in_var_POSITION0.z);
+    float _45 = dfdy(in.in_var_POSITION0.z);
+    float2 _49 = float2(length(float2(_39, _40)), length(float2(_44, _45)));
+    float _58 = precise::max(0.0, (log2((length(_49) * 2.0) / Params.u_thickness) * 0.3010300099849700927734375) + 1.0);
+    float _61 = Params.u_thickness * powr(10.0, floor(_58));
+    float2 _64 = _49 * 4.0;
+    float2 _73 = float2(1.0) - abs((fast::clamp(fmod(in.in_var_POSITION0.xz, float2(_61)) / _64, float2(0.0), float2(1.0)) * 2.0) - float2(1.0));
+    float _76 = precise::max(_73.x, _73.y);
+    float2 _84 = float2(1.0) - abs((fast::clamp(fmod(in.in_var_POSITION0.xz, float2(_61 * 10.0)) / _64, float2(0.0), float2(1.0)) * 2.0) - float2(1.0));
+    float _87 = precise::max(_84.x, _84.y);
+    float2 _95 = float2(1.0) - abs((fast::clamp(fmod(in.in_var_POSITION0.xz, float2(_61 * 100.0)) / _64, float2(0.0), float2(1.0)) * 2.0) - float2(1.0));
+    float _99 = fract(_58);
+    float4 _118;
+    if (precise::max(_95.x, _95.y) > 0.0)
+    {
+        float4 _104 = float4(0.699999988079071044921875, 0.699999988079071044921875, 0.699999988079071044921875, 1.0);
+        _104.w = _76;
+        _118 = _104;
+    }
+    else
+    {
+        float4 _117;
+        if (_87 > 0.0)
+        {
+            float4 _110 = mix(float4(0.699999988079071044921875, 0.699999988079071044921875, 0.699999988079071044921875, 1.0), float4(0.300000011920928955078125, 0.300000011920928955078125, 0.300000011920928955078125, 1.0), float4(_99));
+            _110.w = _110.w * _87;
+            _117 = _110;
+        }
+        else
+        {
+            float4 _116 = float4(0.300000011920928955078125, 0.300000011920928955078125, 0.300000011920928955078125, 1.0);
+            _116.w = _76 * (1.0 - _99);
+            _117 = _116;
+        }
+        _118 = _117;
+    }
+    out.out_var_SV_Target = _118;
     return out;
 }
 

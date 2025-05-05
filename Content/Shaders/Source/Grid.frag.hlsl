@@ -6,6 +6,13 @@ cbuffer Params : register(b0, space3)
     float u_scroll; // in [1, 2]
 };
 
+struct Input
+{
+    float4 Position : SV_Position;
+    float3 WorldPosition : POSITION0;
+    float2 TexCoord : TEXCOORD0;
+};
+
 float ease_inout_exp(float x)
 {
     return x<=0.0f ? 0.0f : pow(2, 10.0f * (x - 1.0f));
@@ -25,29 +32,62 @@ bool on_grid(float2 pos, float thickness)
            (pos.x < thickness) || (pos.x > 1.0f - thickness);
 }
 
-float4 main(float2 uv : TEXCOORD0) : SV_Target
+float max2(float2 v)
 {
-    // const float3 gridColor = float3(0.5f, 0.5f, 0.5f);
-    // float2 gridPos = fmod(uv - 0.5f, 1.0f/u_numCells);
-    // gridPos *= u_numCells;
+    return max(v.x, v.y);
+}
 
-    // float halfThickness = u_thickness / 2.0f;
-    // float2 halfGridPos = fmod(uv = 0.5f, 0.5f/u_numCells);
-    // halfGridPos *= u_numCells * 2.0f;
+float getLodAlpha(float3 worldPos, float gridCellSize, float2 dudv)
+{
+    float2 modVec = (fmod(worldPos.xz, gridCellSize) / dudv);
+    float alpha = max2(float2(1.0f, 1.0f) - abs(saturate(modVec) * 2.0f - float2(1.0f, 1.0f)));
+    return alpha;
+}
 
-    // float3 color = float3(0.0f, 0.0f, 0.0f);
-    // if (on_grid(halfGridPos, halfThickness)) {
-    //     color += gridColor * ease_inout_quad(2.0f - 2.0f * u_scroll);
-    // }
-    // if (on_grid(gridPos, u_thickness)) {
-    //     color += gridColor * ease_inout_quad(2.0f * u_scroll - 1.0f);
-    // }
+float4 main(Input input) : SV_Target
+{
+    const float minPixelsBetweenCells = 2;
+    const float gridCellSize = 4;
+    const float4 gridColorThin  = float4(0.3f, 0.3f, 0.3f, 1.0f);
+    const float4 gridColorThick = float4(0.7f, 0.7f, 0.7f, 1.0f);
 
-    // color = min(color, gridColor);
+    float2 dvx = float2(ddx(input.WorldPosition.x), ddy(input.WorldPosition.x));
+    float2 dvy = float2(ddx(input.WorldPosition.z), ddy(input.WorldPosition.z));
+    float lx = length(dvx);
+    float ly = length(dvy);
 
-    // float2 centeredPos = 2.0f * (u_offset - 0.5f - u_offset) / u_scroll;
-    // color *= max(2.5f * ease_inout_exp(1.0f - length(centeredPos)), 0.0f);
+    float2 dudv = float2(lx, ly);
+    float l = length(dudv);
+
+    float LOD = max(0.0f, log10((l * minPixelsBetweenCells) / u_thickness) + 1.0f);
+    float gridCellSizeLod0 = u_thickness * pow(10.0, floor(LOD));
+    float gridCellSizeLod1 = gridCellSizeLod0 * 10.0f;
+    float gridCellSizeLod2 = gridCellSizeLod1 * 10.0f;
+
+    dudv *= 4.0f;
+
+    float Lod0a = getLodAlpha(input.WorldPosition, gridCellSizeLod0, dudv);
+    float Lod1a = getLodAlpha(input.WorldPosition, gridCellSizeLod1, dudv);
+    float Lod2a = getLodAlpha(input.WorldPosition, gridCellSizeLod2, dudv);
+
+    float LOD_fade = frac(LOD);
+
+    float4 color;
     
-    float3 color = float3(66.0f, 245.0f, 176.0f)/255.0f;
-    return float4(color, 1.0f);
+    if (Lod2a > 0.0f) {
+        color = gridColorThick;
+        color.a *= Lod0a;
+    }
+    else {
+        if (Lod1a > 0.0f) {
+            color = lerp(gridColorThick, gridColorThin, LOD_fade);
+            color.a *= Lod1a;
+        }
+        else {
+            color = gridColorThin;
+            color.a *= (Lod0a * (1.0f - LOD_fade));
+        }
+    }
+
+    return color;
 }
