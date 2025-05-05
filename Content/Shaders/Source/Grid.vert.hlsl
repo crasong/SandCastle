@@ -24,14 +24,16 @@ struct Output
 {
     float4 Position : SV_Position;
     float3 WorldPosition : POSITION0;
+    float3 CamWorldPosition : POSITION1;
     float2 TexCoord : TEXCOORD0;
 };
 
 Output main(Input input)
 {
+    const float gridSize = 100.0f;
     Output output;
     output.TexCoord = input.UV;
-    float3 pos = input.Position;
+    float3 pos = input.Position * gridSize;
     pos.x += u_viewPos.x;
     pos.z += u_viewPos.z;
     output.Position = mul(u_viewProj, float4(pos, 1.0f));

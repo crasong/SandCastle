@@ -10,6 +10,7 @@ struct Input
 {
     float4 Position : SV_Position;
     float3 WorldPosition : POSITION0;
+    float3 CamWorldPosition : POSITION1;
     float2 TexCoord : TEXCOORD0;
 };
 
@@ -39,25 +40,26 @@ float max2(float2 v)
 
 float getLodAlpha(float3 worldPos, float gridCellSize, float2 dudv)
 {
-    float2 modVec = (fmod(worldPos.xz, gridCellSize) / dudv);
+    float2 modVec = (fmod(abs(worldPos.xz), gridCellSize) / dudv);
     float alpha = max2(float2(1.0f, 1.0f) - abs(saturate(modVec) * 2.0f - float2(1.0f, 1.0f)));
     return alpha;
 }
 
 float4 main(Input input) : SV_Target
 {
-    const float minPixelsBetweenCells = 2;
-    const float gridCellSize = 4;
+    const float minPixelsBetweenCells = 2.0f;
+    const float gridSize = 100.0f;
     const float4 gridColorThin  = float4(0.3f, 0.3f, 0.3f, 1.0f);
     const float4 gridColorThick = float4(0.7f, 0.7f, 0.7f, 1.0f);
 
+    float4 color; // final result
+
     float2 dvx = float2(ddx(input.WorldPosition.x), ddy(input.WorldPosition.x));
     float2 dvy = float2(ddx(input.WorldPosition.z), ddy(input.WorldPosition.z));
-    float lx = length(dvx);
-    float ly = length(dvy);
 
-    float2 dudv = float2(lx, ly);
+    float2 dudv = float2(length(dvx), length(dvy));
     float l = length(dudv);
+
 
     float LOD = max(0.0f, log10((l * minPixelsBetweenCells) / u_thickness) + 1.0f);
     float gridCellSizeLod0 = u_thickness * pow(10.0, floor(LOD));
@@ -71,8 +73,6 @@ float4 main(Input input) : SV_Target
     float Lod2a = getLodAlpha(input.WorldPosition, gridCellSizeLod2, dudv);
 
     float LOD_fade = frac(LOD);
-
-    float4 color;
     
     if (Lod2a > 0.0f) {
         color = gridColorThick;
@@ -88,6 +88,9 @@ float4 main(Input input) : SV_Target
             color.a *= (Lod0a * (1.0f - LOD_fade));
         }
     }
+
+    float opacityFalloff = (1.0f - saturate(length(input.WorldPosition.xz - input.CamWorldPosition.xz) / gridSize));
+    color.a *= opacityFalloff;
 
     return color;
 }

@@ -19,50 +19,54 @@ struct main0_out
 struct main0_in
 {
     float3 in_var_POSITION0 [[user(locn0)]];
+    float3 in_var_POSITION1 [[user(locn1)]];
 };
 
 fragment main0_out main0(main0_in in [[stage_in]], constant type_Params& Params [[buffer(0)]])
 {
     main0_out out = {};
-    float _39 = dfdx(in.in_var_POSITION0.x);
-    float _40 = dfdy(in.in_var_POSITION0.x);
-    float _44 = dfdx(in.in_var_POSITION0.z);
-    float _45 = dfdy(in.in_var_POSITION0.z);
-    float2 _49 = float2(length(float2(_39, _40)), length(float2(_44, _45)));
-    float _58 = precise::max(0.0, (log2((length(_49) * 2.0) / Params.u_thickness) * 0.3010300099849700927734375) + 1.0);
-    float _61 = Params.u_thickness * powr(10.0, floor(_58));
-    float2 _64 = _49 * 4.0;
-    float2 _73 = float2(1.0) - abs((fast::clamp(fmod(in.in_var_POSITION0.xz, float2(_61)) / _64, float2(0.0), float2(1.0)) * 2.0) - float2(1.0));
-    float _76 = precise::max(_73.x, _73.y);
-    float2 _84 = float2(1.0) - abs((fast::clamp(fmod(in.in_var_POSITION0.xz, float2(_61 * 10.0)) / _64, float2(0.0), float2(1.0)) * 2.0) - float2(1.0));
-    float _87 = precise::max(_84.x, _84.y);
-    float2 _95 = float2(1.0) - abs((fast::clamp(fmod(in.in_var_POSITION0.xz, float2(_61 * 100.0)) / _64, float2(0.0), float2(1.0)) * 2.0) - float2(1.0));
-    float _99 = fract(_58);
-    float4 _118;
-    if (precise::max(_95.x, _95.y) > 0.0)
+    float _42 = dfdx(in.in_var_POSITION0.x);
+    float _43 = dfdy(in.in_var_POSITION0.x);
+    float _47 = dfdx(in.in_var_POSITION0.z);
+    float _48 = dfdy(in.in_var_POSITION0.z);
+    float2 _52 = float2(length(float2(_42, _43)), length(float2(_47, _48)));
+    float _61 = precise::max(0.0, (log2((length(_52) * 2.0) / Params.u_thickness) * 0.3010300099849700927734375) + 1.0);
+    float _64 = Params.u_thickness * powr(10.0, floor(_61));
+    float2 _67 = _52 * 4.0;
+    float2 _69 = abs(in.in_var_POSITION0.xz);
+    float2 _77 = float2(1.0) - abs((fast::clamp(fmod(_69, float2(_64)) / _67, float2(0.0), float2(1.0)) * 2.0) - float2(1.0));
+    float _80 = precise::max(_77.x, _77.y);
+    float2 _88 = float2(1.0) - abs((fast::clamp(fmod(_69, float2(_64 * 10.0)) / _67, float2(0.0), float2(1.0)) * 2.0) - float2(1.0));
+    float _91 = precise::max(_88.x, _88.y);
+    float2 _99 = float2(1.0) - abs((fast::clamp(fmod(_69, float2(_64 * 100.0)) / _67, float2(0.0), float2(1.0)) * 2.0) - float2(1.0));
+    float _103 = fract(_61);
+    float4 _122;
+    if (precise::max(_99.x, _99.y) > 0.0)
     {
-        float4 _104 = float4(0.699999988079071044921875, 0.699999988079071044921875, 0.699999988079071044921875, 1.0);
-        _104.w = _76;
-        _118 = _104;
+        float4 _108 = float4(0.699999988079071044921875, 0.699999988079071044921875, 0.699999988079071044921875, 1.0);
+        _108.w = _80;
+        _122 = _108;
     }
     else
     {
-        float4 _117;
-        if (_87 > 0.0)
+        float4 _121;
+        if (_91 > 0.0)
         {
-            float4 _110 = mix(float4(0.699999988079071044921875, 0.699999988079071044921875, 0.699999988079071044921875, 1.0), float4(0.300000011920928955078125, 0.300000011920928955078125, 0.300000011920928955078125, 1.0), float4(_99));
-            _110.w = _110.w * _87;
-            _117 = _110;
+            float4 _114 = mix(float4(0.699999988079071044921875, 0.699999988079071044921875, 0.699999988079071044921875, 1.0), float4(0.300000011920928955078125, 0.300000011920928955078125, 0.300000011920928955078125, 1.0), float4(_103));
+            _114.w = _114.w * _91;
+            _121 = _114;
         }
         else
         {
-            float4 _116 = float4(0.300000011920928955078125, 0.300000011920928955078125, 0.300000011920928955078125, 1.0);
-            _116.w = _76 * (1.0 - _99);
-            _117 = _116;
+            float4 _120 = float4(0.300000011920928955078125, 0.300000011920928955078125, 0.300000011920928955078125, 1.0);
+            _120.w = _80 * (1.0 - _103);
+            _121 = _120;
         }
-        _118 = _117;
+        _122 = _121;
     }
-    out.out_var_SV_Target = _118;
+    float4 _131 = _122;
+    _131.w = _122.w * (1.0 - fast::clamp(length(in.in_var_POSITION0.xz - in.in_var_POSITION1.xz) * 0.00999999977648258209228515625, 0.0, 1.0));
+    out.out_var_SV_Target = _131;
     return out;
 }
 
