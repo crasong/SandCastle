@@ -26,7 +26,8 @@ external
 *.obj
 
 # Compiled Shaders
-Content/Shaders/Compiled/**
+Content/Shaders/Compiled
+Content/Shaders/Reference
 *.spv
 
 # Precompiled Headers
