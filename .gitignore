@@ -25,6 +25,10 @@ external
 *.o
 *.obj
 
+# Compiled Shaders
+Content/Shaders/Compiled/**
+*.spv
+
 # Precompiled Headers
 *.gch
 *.pch
