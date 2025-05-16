@@ -45,7 +45,7 @@ float getLodAlpha(float3 worldPos, float gridCellSize, float2 dudv)
     return alpha;
 }
 
-float4 main(Input input) : SV_Target
+float4 main(Input input) : SV_Target0
 {
     const float minPixelsBetweenCells = 2.0f;
     const float gridSize = 100.0f;

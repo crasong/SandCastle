@@ -62,16 +62,6 @@ static std::vector<glm::vec3> s_PointLightPositions = {
 };
 static unsigned int s_ModelLoadingFlags = aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals | aiProcess_JoinIdenticalVertices | aiProcess_CalcTangentSpace;
                                         //| aiProcess_TransformUVCoords | aiProcess_GenBoundingBoxes | aiProcess_CalcTangentSpace;
-                                        
-static const std::vector<aiTextureType> s_TextureTypes = {
-    // These types work for DamagedHelmet
-    aiTextureType_BASE_COLOR,
-    aiTextureType_NORMALS,
-    //aiTextureType_EMISSIVE,
-    //aiTextureType_METALNESS,
-    //aiTextureType_DIFFUSE_ROUGHNESS,
-    //aiTextureType_LIGHTMAP,
-};
 
 Renderer::Renderer() {}
 
@@ -120,6 +110,218 @@ bool Renderer::Init(const char* title, int width, int height) {
 void Renderer::InitAssetLoader() {
     std::filesystem::path basePath = SDL_GetBasePath();
     BasePath = basePath.make_preferred().string() ;
+}
+
+bool Renderer::InitGridPipeline() {
+    SDL_GPUShader* gridVertShader = LoadShader(mSDLDevice, "Grid.vert", 0, 2, 0, 0);
+    if (!gridVertShader) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Grid Vertex Shader failed to load");
+        return false;
+    }
+    SDL_GPUShader* gridFragShader = LoadShader(mSDLDevice, "Grid.frag", 0, 1, 0, 0);
+    if (!gridFragShader) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Grid Fragment Shader failed to load");
+        return false;
+    }
+
+    SDL_GPUColorTargetBlendState colorBlendState{};
+    colorBlendState.color_write_mask = SDL_GPU_COLORCOMPONENT_R | SDL_GPU_COLORCOMPONENT_G | SDL_GPU_COLORCOMPONENT_B | SDL_GPU_COLORCOMPONENT_A;
+    colorBlendState.enable_color_write_mask = true;
+    colorBlendState.enable_blend = true;
+    colorBlendState.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+    colorBlendState.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    colorBlendState.color_blend_op = SDL_GPU_BLENDOP_ADD;
+    colorBlendState.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    colorBlendState.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+    colorBlendState.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+
+    SDL_GPUColorTargetDescription colorTargetDescription{};
+    colorTargetDescription.format = SDL_GetGPUSwapchainTextureFormat(mSDLDevice, mWindow);
+    colorTargetDescription.blend_state = colorBlendState;
+    std::vector colorTargetDescriptions{colorTargetDescription};
+    SDL_GPUGraphicsPipelineTargetInfo pipelineTargetInfo{};
+    pipelineTargetInfo.color_target_descriptions = colorTargetDescriptions.data();
+    pipelineTargetInfo.num_color_targets = static_cast<Uint32>(colorTargetDescriptions.size());
+    pipelineTargetInfo.has_depth_stencil_target = true;
+
+    if (SDL_GPUTextureSupportsFormat(
+        mSDLDevice, 
+        SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT, 
+        SDL_GPU_TEXTURETYPE_2D, 
+        SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+        pipelineTargetInfo.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
+    }
+    else if (SDL_GPUTextureSupportsFormat(
+        mSDLDevice, 
+        SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT, 
+        SDL_GPU_TEXTURETYPE_2D, 
+        SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+        pipelineTargetInfo.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT;
+    }
+    else {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "No depth-stencil format supported");
+        return false;
+    }
+    SDL_GPUDepthStencilState depthStencilState{
+        .compare_op = SDL_GPU_COMPAREOP_LESS,
+        .enable_depth_test = true,
+        .enable_depth_write = true,
+    };
+
+    SDL_GPUVertexBufferDescription vertexBufferDescription{};
+    vertexBufferDescription.slot = 0;
+    vertexBufferDescription.pitch = sizeof(Vertex);
+    vertexBufferDescription.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+    vertexBufferDescription.instance_step_rate = 0;
+    std::vector<SDL_GPUVertexBufferDescription> vertexBufferDescriptions{vertexBufferDescription};
+
+    SDL_GPUVertexAttribute vertexPositionAttribute { 0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0};
+    SDL_GPUVertexAttribute vertexNormalAttribute   { 1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,     sizeof(glm::vec3)};
+    SDL_GPUVertexAttribute vertexTangentAttribute  { 2, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 2 * sizeof(glm::vec3)};
+    SDL_GPUVertexAttribute vertexBiTangentAttribute{ 3, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 3 * sizeof(glm::vec3)};
+    SDL_GPUVertexAttribute vertexTextureAttribute  { 4, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, 4 * sizeof(glm::vec3)};
+    std::vector<SDL_GPUVertexAttribute> vertexAttributes{
+        vertexPositionAttribute,
+        vertexNormalAttribute,
+        vertexTangentAttribute,
+        vertexBiTangentAttribute,
+        vertexTextureAttribute
+    };
+    SDL_GPUVertexInputState vertexInputState{ vertexBufferDescriptions.data(), 1, vertexAttributes.data(), static_cast<Uint32>(vertexAttributes.size())};
+
+    // create grid pipeline
+    SDL_GPUColorTargetDescription colorTargetDescription2{};
+    colorTargetDescription2.format = colorTargetDescription.format;
+    colorTargetDescription2.blend_state = colorBlendState;
+    std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions2{colorTargetDescriptions2};
+    pipelineTargetInfo.color_target_descriptions = colorTargetDescriptions2.data();
+    pipelineTargetInfo.num_color_targets = static_cast<Uint32>(colorTargetDescriptions2.size());
+
+    SDL_GPUGraphicsPipelineCreateInfo gridPipelineCreateInfo{};
+    gridPipelineCreateInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+    gridPipelineCreateInfo.vertex_shader = gridVertShader;
+    gridPipelineCreateInfo.fragment_shader = gridFragShader;
+    gridPipelineCreateInfo.target_info = pipelineTargetInfo;
+    gridPipelineCreateInfo.vertex_input_state = vertexInputState;
+    gridPipelineCreateInfo.depth_stencil_state = depthStencilState;
+    gridPipelineCreateInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+    gridPipelineCreateInfo.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+    mGridPipeline = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &gridPipelineCreateInfo);
+    if (!mGridPipeline) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Grid' graphics pipeline");
+        return false;
+    }
+
+    SDL_ReleaseGPUShader(mSDLDevice, gridVertShader);
+    SDL_ReleaseGPUShader(mSDLDevice, gridFragShader);
+    
+    return true;
+}
+
+bool Renderer::InitMeshPipeline() {
+    SDL_GPUShader* vertexShader = LoadShader(mSDLDevice, "PBR.vert", 0, 3, 0, 0);
+    if (!vertexShader) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Vertex Shader failed to load");
+        return false;
+    }
+
+    SDL_GPUShader* fragmentShader = LoadShader(mSDLDevice, "PBR.frag", static_cast<Uint32>(s_TextureTypes.size()), 1, 0, 0);
+    if (!fragmentShader) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Vertex Shader failed to load");
+        return false;
+    }
+
+    SDL_GPUColorTargetBlendState colorBlendState{};
+    colorBlendState.color_write_mask = SDL_GPU_COLORCOMPONENT_R | SDL_GPU_COLORCOMPONENT_G | SDL_GPU_COLORCOMPONENT_B | SDL_GPU_COLORCOMPONENT_A;
+    colorBlendState.enable_color_write_mask = true;
+    colorBlendState.enable_blend = true;
+    colorBlendState.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+    colorBlendState.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    colorBlendState.color_blend_op = SDL_GPU_BLENDOP_ADD;
+    colorBlendState.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    colorBlendState.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+    colorBlendState.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+
+    SDL_GPUColorTargetDescription colorTargetDescription{};
+    colorTargetDescription.format = SDL_GetGPUSwapchainTextureFormat(mSDLDevice, mWindow);
+    colorTargetDescription.blend_state = colorBlendState;
+    std::vector colorTargetDescriptions{colorTargetDescription};
+    SDL_GPUGraphicsPipelineTargetInfo pipelineTargetInfo{};
+    pipelineTargetInfo.color_target_descriptions = colorTargetDescriptions.data();
+    pipelineTargetInfo.num_color_targets = static_cast<Uint32>(colorTargetDescriptions.size());
+    pipelineTargetInfo.has_depth_stencil_target = true;
+
+    if (SDL_GPUTextureSupportsFormat(
+        mSDLDevice, 
+        SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT, 
+        SDL_GPU_TEXTURETYPE_2D, 
+        SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+        pipelineTargetInfo.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
+    }
+    else if (SDL_GPUTextureSupportsFormat(
+        mSDLDevice, 
+        SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT, 
+        SDL_GPU_TEXTURETYPE_2D, 
+        SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+        pipelineTargetInfo.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT;
+    }
+    else {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "No depth-stencil format supported");
+        return false;
+    }
+    SDL_GPUDepthStencilState depthStencilState{
+        .compare_op = SDL_GPU_COMPAREOP_LESS,
+        .enable_depth_test = true,
+        .enable_depth_write = true,
+    };
+
+    SDL_GPUVertexBufferDescription vertexBufferDescription{};
+    vertexBufferDescription.slot = 0;
+    vertexBufferDescription.pitch = sizeof(Vertex);
+    vertexBufferDescription.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+    vertexBufferDescription.instance_step_rate = 0;
+    std::vector<SDL_GPUVertexBufferDescription> vertexBufferDescriptions{vertexBufferDescription};
+
+    SDL_GPUVertexAttribute vertexPositionAttribute { 0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0};
+    SDL_GPUVertexAttribute vertexNormalAttribute   { 1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,     sizeof(glm::vec3)};
+    SDL_GPUVertexAttribute vertexTangentAttribute  { 2, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 2 * sizeof(glm::vec3)};
+    SDL_GPUVertexAttribute vertexBiTangentAttribute{ 3, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 3 * sizeof(glm::vec3)};
+    SDL_GPUVertexAttribute vertexTextureAttribute  { 4, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, 4 * sizeof(glm::vec3)};
+    std::vector<SDL_GPUVertexAttribute> vertexAttributes{
+        vertexPositionAttribute,
+        vertexNormalAttribute,
+        vertexTangentAttribute,
+        vertexBiTangentAttribute,
+        vertexTextureAttribute
+    };
+    SDL_GPUVertexInputState vertexInputState{ vertexBufferDescriptions.data(), 1, vertexAttributes.data(), static_cast<Uint32>(vertexAttributes.size())};
+
+    SDL_GPUGraphicsPipelineCreateInfo pipelineCreateInfo{};
+    pipelineCreateInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+    pipelineCreateInfo.vertex_shader = vertexShader;
+    pipelineCreateInfo.fragment_shader = fragmentShader;
+    pipelineCreateInfo.target_info = pipelineTargetInfo;
+    pipelineCreateInfo.vertex_input_state = vertexInputState;
+    pipelineCreateInfo.depth_stencil_state = depthStencilState;
+
+    pipelineCreateInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+    mPipelines[RenderMode::Fill] = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &pipelineCreateInfo);
+    if (!mPipelines[RenderMode::Fill]) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Fill' graphics pipeline");
+        return false;
+    }
+    
+	pipelineCreateInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_LINE;
+    mPipelines[RenderMode::Line] = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &pipelineCreateInfo);
+    if (!mPipelines[RenderMode::Line]) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Line' graphics pipeline");
+        return false;
+    }
+
+    SDL_ReleaseGPUShader(mSDLDevice, vertexShader);
+    SDL_ReleaseGPUShader(mSDLDevice, fragmentShader);
+
+    return true;
 }
 
 bool Renderer::InitPipelines() {
@@ -237,8 +439,7 @@ bool Renderer::InitPipelines() {
     SDL_GPUColorTargetDescription colorTargetDescription2{};
     colorTargetDescription2.format = colorTargetDescription.format;
     colorTargetDescription2.blend_state = colorBlendState;
-    //colorTargetDescription2.blend_state.enable_blend = true;
-    std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions2{colorTargetDescriptions2};
+    std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions2{colorTargetDescription2};
     pipelineTargetInfo.color_target_descriptions = colorTargetDescriptions2.data();
     pipelineTargetInfo.num_color_targets = static_cast<Uint32>(colorTargetDescriptions2.size());
 
@@ -796,7 +997,11 @@ void Renderer::ParseNodes(Mesh& outMesh, MeshLoadingContext& outContext) {
         //scenenode.transformation[3][3] = curr.pNode->mTransformation[3][3];
         //scenenode.transformation = glm::transpose(scenenode.transformation);
         scenenode.transformation = nodeTransform;
-        
+
+        // if (parentId > -1) {
+        //     outMesh.nodeMap[parentId].childIds.emplace_back(nodeId);
+        //     scenenode.transformation = outMesh.nodeMap[parentId].transformation * scenenode.transformation;
+        // }
         outMesh.nodeMap.emplace(nodeId, scenenode);
         parentId = nodeId;
         ++nodeId;
@@ -1053,7 +1258,6 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
         mNodesThisFrame.clear();
         return;
     }
-    // Draw Grid here? TBD
 
     // TEMP
     static SceneLighting s_lighting;

@@ -11,6 +11,16 @@
 									0.0f, 0.0f, 1.0f, 0.0f, \
 									0.0f, 0.0f, 0.0f, 1.0f);\
 
+static const std::vector<aiTextureType> s_TextureTypes = {
+    // These types work for DamagedHelmet
+    aiTextureType_BASE_COLOR,
+    aiTextureType_NORMALS,
+    //aiTextureType_EMISSIVE,
+    //aiTextureType_METALNESS,
+    //aiTextureType_DIFFUSE_ROUGHNESS,
+    //aiTextureType_LIGHTMAP,
+};
+
 struct SunLight {
 	glm::vec3 direction = {-1.0f, -1.0f, -1.0f};
 	glm::vec3 color 	= { 1.0f,  1.0f,  1.0f};
@@ -77,9 +87,10 @@ struct SceneNode {
 		parentId = parentId;
 		id = id;
 	}
+	glm::mat4 transformation = glm::mat4(1.0f);
 	int parentId = -1;
 	int id = 0;
-	glm::mat4 transformation = glm::mat4(1.0f);
+	std::vector<int> childIds;
 };
 
 struct Mesh {
@@ -135,7 +146,11 @@ static void UpdateCachedTransformations(Mesh& mesh) {
 }
 
 static void GetValidTextureBindings(const PBRMaterial& material, std::vector<SDL_GPUTextureSamplerBinding>& outBindings) {
-	for (auto& [type, texture] : material.textureMap) {
+	// for (auto& [type, texture] : material.textureMap) {
+	// 	outBindings.push_back({texture.texture, texture.sampler});
+	// }
+	for (auto type : s_TextureTypes) {
+		const Texture& texture = material.textureMap.at(type);
 		outBindings.push_back({texture.texture, texture.sampler});
 	}
 	SDL_assert(outBindings.size() == material.textureMap.size());

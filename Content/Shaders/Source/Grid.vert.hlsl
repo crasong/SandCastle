@@ -38,5 +38,6 @@ Output main(Input input)
     pos.z += u_viewPos.z;
     output.Position = mul(u_viewProj, float4(pos, 1.0f));
     output.WorldPosition = pos;
+    output.CamWorldPosition = u_viewPos;
     return output;
 }

@@ -124,6 +124,9 @@ public:
 private:
     void InitAssetLoader();
     bool InitPipelines();
+    bool InitCardPipeline();
+    bool InitGridPipeline();
+    bool InitMeshPipeline();
     void InitSamplers();
     void InitGrid();
     void InitMeshes();
