@@ -15,10 +15,10 @@ static const std::vector<aiTextureType> s_TextureTypes = {
     // These types work for DamagedHelmet
     aiTextureType_BASE_COLOR,
     aiTextureType_NORMALS,
-    //aiTextureType_EMISSIVE,
-    //aiTextureType_METALNESS,
-    //aiTextureType_DIFFUSE_ROUGHNESS,
-    //aiTextureType_LIGHTMAP,
+    aiTextureType_EMISSIVE,
+    aiTextureType_METALNESS,
+    aiTextureType_DIFFUSE_ROUGHNESS,
+    aiTextureType_LIGHTMAP,
 };
 
 struct SunLight {

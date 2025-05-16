@@ -37,16 +37,16 @@ struct Output
 Output main(Input input)
 {
     Output output;
-    output.UV = input.UV;
     
-    float3 Normal    = normalize(mul(u_model, float4(input.Normal, 0.0f))).xyz;
-    float3 Tangent   = normalize(mul(u_model, float4(input.Tangent, 0.0f))).xyz;
-    float3 Bitangent = normalize(mul(u_model, float4(cross(Tangent, Normal), 0.0f))).xyz;
+    float3 Normal    = normalize(mul(u_model, float4(input.Normal,    0.0f))).xyz;
+    float3 Tangent   = normalize(mul(u_model, float4(input.Tangent,   0.0f))).xyz;
+    float3 Bitangent = normalize(mul(u_model, float4(input.Bitangent, 0.0f))).xyz;
     float3x3 TBN = transpose(float3x3(Tangent, Bitangent, Normal));
-    float4 vertPos = mul(u_model, float4(input.Position, 1.0f));
+    float4 vertPos  = mul(u_model, float4(input.Position, 1.0f));
     output.Position = mul(u_viewProj, vertPos);
-    output.ViewPos = mul(TBN, u_viewPos);
-    output.FragPos = mul(TBN, vertPos.xyz);
+    output.ViewPos  = mul(TBN, u_viewPos);
+    output.FragPos  = mul(TBN, vertPos.xyz);
     output.LightPos = mul(TBN, u_lightpos);
+    output.UV = input.UV;
     return output;
 }
