@@ -63,12 +63,12 @@ public:
     };
 
     DisplayComponent() = default;
-    explicit DisplayComponent(Mesh* mesh) : mMesh(mesh) {}
+    explicit DisplayComponent(MeshData* mesh) : mMesh(mesh) {}
 
     void BeginFrame() override;
 
     bool mShow = true;
-    Mesh* mMesh = nullptr;
+    MeshData* mMesh = nullptr;
 private:
     void DisplaySceneDetails();
     Assimp::Importer importer;

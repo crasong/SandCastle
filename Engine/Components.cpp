@@ -25,7 +25,7 @@ void VelocityComponent::BeginFrame() {
 void DisplayComponent::BeginFrame() {
     // Display the mesh information in the imgui UI
     if (mMesh) {
-        ImGui::Text("Mesh Information");
+        ImGui::Text("MeshData Information");
         ImGui::Text("\tVertices: %i", mMesh->vertices.size());
         ImGui::Text("\tIndices: %i", mMesh->indices.size());
         ImGui::Checkbox("Show", &mShow);

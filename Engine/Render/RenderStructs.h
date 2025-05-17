@@ -3,6 +3,7 @@
 #include <assimp/material.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <SDL3/SDL.h>
 #include <SDL3/SDL_gpu.h>
 #include <stack>
 
@@ -30,12 +31,11 @@ struct SunLight {
 struct PointLight {
 	glm::vec3 position = {0.0f, 0.0f, 0.0f};
 	glm::vec3 color    = {1.0f, 1.0f, 1.0f};
-	bool enabled = false;
 };
 
 struct SceneLighting {
 	glm::vec3 ambientLight;
-	PointLight pointLights[8];
+	PointLight pointLights[9];
 	bool inited = false;
 };
 
@@ -69,7 +69,7 @@ struct PBRMaterial {
 	std::unordered_map<aiTextureType, Texture> textureMap;
 };
 
-struct MeshEntry {
+struct SubMeshData {
 	uint32_t baseVertex  = 0;
 	uint32_t baseIndex 	 = 0;
 	uint32_t numVertices = 0;
@@ -93,14 +93,14 @@ struct SceneNode {
 	std::vector<int> childIds;
 };
 
-struct Mesh {
+struct MeshData {
 	std::vector<Vertex> vertices;
 	std::vector<Uint32> indices;
 	uint8_t samplerTypeIndex = 0;
 	SDL_GPUBuffer* vertexBuffer = nullptr;
 	SDL_GPUBuffer* indexBuffer = nullptr;
 	std::unordered_map<std::string, Texture> textureIdMap;
-	std::vector<MeshEntry> submeshes;
+	std::vector<SubMeshData> submeshes;
 	std::vector<PBRMaterial> materials;
 	std::unordered_map<uint32_t, SceneNode> nodeMap;
 	std::string filepath;
@@ -109,7 +109,7 @@ struct Mesh {
 };
 
 // mirrors camera buffer on GPU
-struct CameraGPU
+struct CameraData
 {
 	glm::mat4 view 			 = {1.0f};
 	glm::mat4 projection 	 = {1.0f};
@@ -132,8 +132,8 @@ struct GridParamsFragGPU
 	float scroll;
 };
 
-static void UpdateCachedTransformations(Mesh& mesh) {
-	for (MeshEntry& submesh : mesh.submeshes) {
+static void UpdateCachedTransformations(MeshData& mesh) {
+	for (SubMeshData& submesh : mesh.submeshes) {
 		SceneNode& node = mesh.nodeMap[submesh.nodeId];
 		glm::mat4 worldTransform = node.transformation;
 		int nextId = node.parentId;

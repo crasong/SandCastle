@@ -82,7 +82,7 @@ public:
         SDL_GPUCommandBuffer* commandBuffer = nullptr;
         SDL_GPUTexture* swapchainTexture = nullptr;
         //SDL_GPURenderPass* renderPass = nullptr;
-        CameraGPU cameraData{};
+        CameraData cameraData{};
     };
 
 public:
@@ -114,7 +114,7 @@ public:
     }
 
     // returns nullptr if texture type not found
-    static SDL_GPUTexture* GetTexture(const Mesh& mesh, const aiTextureType type) {
+    static SDL_GPUTexture* GetTexture(const MeshData& mesh, const aiTextureType type) {
         for (auto& [filename, meshTexture] : mesh.textureIdMap) {
             if (meshTexture.type == type) return meshTexture.texture;
         }
@@ -130,18 +130,18 @@ private:
     void InitSamplers();
     void InitGrid();
     void InitMeshes();
-    bool InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh);
+    bool InitMesh(const ModelDescriptor& modelDescriptor, MeshData& mesh);
 
     // Render pass functions
     bool BeginRenderPass(RenderPassContext& context);
-    void InitCameraData(const CameraNode* cameraNode, CameraGPU& outCameraData) const;
+    void InitCameraData(const CameraNode* cameraNode, CameraData& outCameraData) const;
     void RecordGridCommands(RenderPassContext& context);
     void RecordModelCommands(RenderPassContext& context);
     void RecordUICommands(RenderPassContext& context);
     void EndRenderPass(RenderPassContext& context);
 
     bool CreateModelGPUResources(
-        Mesh& mesh,
+        MeshData& mesh,
         SDL_GPUBufferCreateInfo& vertexBufferCreateInfo,
         SDL_GPUTransferBuffer*& vertexTransferBuffer,
         SDL_GPUBufferCreateInfo& indexBufferCreateInfo,
@@ -169,11 +169,11 @@ private:
     SDL_Surface* LoadImage(const ModelDescriptor& modelDescriptor, int desiredChannels = 0);
     SDL_Surface* LoadImage(const std::string& foldername, const std::string& subfoldername, const std::string& texturename, int desiredChannels = 0);
     SDL_Surface* LoadImageShared(SDL_Surface* image, int desiredChannels = 0);
-    bool LoadModel(const ModelDescriptor& modelDescriptor, Mesh& outMesh, MeshLoadingContext& outContext);
-    void ParseNodes(Mesh& outMesh, MeshLoadingContext& outContext);
-    void ParseVertices(const aiScene* scene, const bool flipX, const bool flipY, const bool flipZ, Mesh& outMesh, MeshLoadingContext& outContext);
-    void ParseMaterials(const aiScene* scene, Mesh& outMesh, MeshLoadingContext& outContext);
-    void ParseTextures(const aiScene* scene, Mesh& outMesh, MeshLoadingContext& outContext);
+    bool LoadModel(const ModelDescriptor& modelDescriptor, MeshData& outMesh, MeshLoadingContext& outContext);
+    void ParseNodes(MeshData& outMesh, MeshLoadingContext& outContext);
+    void ParseVertices(const aiScene* scene, const bool flipX, const bool flipY, const bool flipZ, MeshData& outMesh, MeshLoadingContext& outContext);
+    void ParseMaterials(const aiScene* scene, MeshData& outMesh, MeshLoadingContext& outContext);
+    void ParseTextures(const aiScene* scene, MeshData& outMesh, MeshLoadingContext& outContext);
     
 private:
     SDL_Window* mWindow = nullptr;
@@ -183,9 +183,9 @@ private:
     
     std::vector<SDL_GPUSampler*> mSamplers;
     std::unordered_map<RenderMode, SDL_GPUGraphicsPipeline*> mPipelines;
-    std::unordered_map<std::string, Mesh> mMeshes;
+    std::unordered_map<std::string, MeshData> mMeshes;
     SDL_GPUGraphicsPipeline* mGridPipeline = nullptr;
-    Mesh mGridMesh;
+    MeshData mGridMesh;
 
     std::vector<CameraNode*> mCameraNodes;
     std::vector<RenderNode*> mNodesThisFrame;

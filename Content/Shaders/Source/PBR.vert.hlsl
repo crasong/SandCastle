@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 cbuffer Camera : register(b0, space1)
 {
     float4x4 u_view;
@@ -11,9 +12,9 @@ cbuffer Model : register(b1, space1)
     float4x4 u_model;
 };
 
-cbuffer Light : register(b2, space1)
+cbuffer Lights : register(b2, space1)
 {
-    float3 u_lightpos;
+    Light u_lights[9];
 };
 
 struct Input
@@ -30,7 +31,7 @@ struct Output
     float4 Position : SV_Position;
     float3 ViewPos  : POSITION0;
     float3 FragPos  : POSITION1;
-    float3 LightPos : POSITION2;
+    float3 LightsPos[9] : POSITION2;
     float2 UV       : TEXCOORD0;
 };
 
@@ -46,7 +47,9 @@ Output main(Input input)
     output.Position = mul(u_viewProj, vertPos);
     output.ViewPos  = mul(TBN, u_viewPos);
     output.FragPos  = mul(TBN, vertPos.xyz);
-    output.LightPos = mul(TBN, u_lightpos);
+    for (int i = 0; i < 9; ++i) {
+        output.LightsPos[i] = mul(TBN, u_lights[i].position);
+    }
     output.UV = input.UV;
     return output;
 }

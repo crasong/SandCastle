@@ -430,7 +430,7 @@ void Renderer::InitGrid() {
 void Renderer::InitMeshes() {
     InitGrid();
     for (auto& model : Models) {
-        Mesh mesh;
+        MeshData mesh;
         if (InitMesh(model, mesh)) {
             mMeshes[model.foldername] = mesh;
         }
@@ -441,14 +441,14 @@ void Renderer::InitMeshes() {
     SDL_LogDebug(SDL_LOG_CATEGORY_CUSTOM, "Loaded %zu meshes", mMeshes.size());
 }
 
-bool Renderer::InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh) {
+bool Renderer::InitMesh(const ModelDescriptor& modelDescriptor, MeshData& mesh) {
     MeshLoadingContext context{};
     // Load the model
     if (!LoadModel(modelDescriptor, mesh, context)) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load model: %s", SDL_GetError());
         return false;
     }
-    // Create Mesh resources
+    // Create MeshData resources
     SDL_GPUBufferCreateInfo vertexBufferCreateInfo{};
     SDL_GPUTransferBuffer* vertexTransferBuffer = nullptr;
     SDL_GPUBufferCreateInfo indexBufferCreateInfo{};
@@ -554,7 +554,7 @@ bool Renderer::InitMesh(const ModelDescriptor& modelDescriptor, Mesh& mesh) {
 }
 
 bool Renderer::CreateModelGPUResources(
-        Mesh& mesh,
+        MeshData& mesh,
         SDL_GPUBufferCreateInfo& vertexBufferCreateInfo,
         SDL_GPUTransferBuffer*& vertexTransferBuffer,
         SDL_GPUBufferCreateInfo& indexBufferCreateInfo,
@@ -664,16 +664,24 @@ bool Renderer::CreateFallbackTexture(
     SDL_GPUTexture*& outTexture, 
     SDL_GPUTransferBuffer*& outTransferBuffer
 ) {
-    SDL_Surface* surface = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_ABGR8888);
+    const SDL_PixelFormat format = SDL_PIXELFORMAT_RGBA8888;
+    SDL_Surface* surface = SDL_CreateSurface(1, 1, format);
     // TODO: Figure out how to fill the pixel with the appropriate color information
     // this will depend on the type of texture, and we should follow the gltf spec
     // For emissive: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#_material_emissivetexture
+    const SDL_PixelFormatDetails* formatDetails = SDL_GetPixelFormatDetails(format);
+    Uint32 color = SDL_MapRGBA(formatDetails, nullptr, 255, 255, 255, 255);
+    if (!SDL_FillSurfaceRect(surface, nullptr, color)) {
+        return false;
+    }
 
     std::string name = std::format("{}-Fallback", aiTextureTypeToString(type));
-    bool success = CreateTextureGPUResources(surface, name, outTexture, outTransferBuffer);
+    if (!CreateTextureGPUResources(surface, name, outTexture, outTransferBuffer)) {
+        return false;
+    }
 
     SDL_DestroySurface(surface);
-    return success;
+    return true;
 }
 
 SDL_GPUShader* Renderer::LoadShader(
@@ -790,7 +798,7 @@ SDL_Surface* Renderer::LoadImageShared(SDL_Surface* image, int desiredChannels) 
     return image;
 }
 
-bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Mesh& outMesh, MeshLoadingContext& outContext) {
+bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, MeshData& outMesh, MeshLoadingContext& outContext) {
     // Construct the full path
     std::filesystem::path modelPath = std::format("{}Content/Models/{}/{}/{}{}", BasePath, modelDescriptor.foldername, modelDescriptor.subFoldername, modelDescriptor.foldername, modelDescriptor.fileExtension);
     std::string modelPathString = modelPath.make_preferred().string();
@@ -814,7 +822,7 @@ bool Renderer::LoadModel(const ModelDescriptor& modelDescriptor, Mesh& outMesh, 
     return true;
 }
 
-void Renderer::ParseNodes(Mesh& outMesh, MeshLoadingContext& outContext) {
+void Renderer::ParseNodes(MeshData& outMesh, MeshLoadingContext& outContext) {
     int totalChildMeshes = 0;
     int parentId = -1;
     int nodeId = 0;
@@ -885,7 +893,7 @@ void Renderer::ParseNodes(Mesh& outMesh, MeshLoadingContext& outContext) {
     }
 }
 
-void Renderer::ParseVertices(const aiScene* scene, const bool flipX, const bool flipY, const bool flipZ, Mesh& outMesh, MeshLoadingContext& outContext) {
+void Renderer::ParseVertices(const aiScene* scene, const bool flipX, const bool flipY, const bool flipZ, MeshData& outMesh, MeshLoadingContext& outContext) {
     const float xMod = flipX ? -1.0f : 1.0f;
     const float yMod = flipY ? -1.0f : 1.0f;
     const float zMod = flipZ ? -1.0f : 1.0f;
@@ -959,7 +967,7 @@ void Renderer::ParseVertices(const aiScene* scene, const bool flipX, const bool 
 }
 
 // TODO: Is this necessary? How do I detect information rather than hardcode?
-void Renderer::ParseMaterials(const aiScene* scene, Mesh& outMesh, MeshLoadingContext& outContext) {
+void Renderer::ParseMaterials(const aiScene* scene, MeshData& outMesh, MeshLoadingContext& outContext) {
     // const bool bIsBinary = (scene->mNumTextures > 0);
     // for (size_t i = 0; i < scene->mNumMaterials; ++i) {
     //     auto material = scene->mMaterials[i];
@@ -979,7 +987,7 @@ void Renderer::ParseMaterials(const aiScene* scene, Mesh& outMesh, MeshLoadingCo
     // }
 }
 
-void Renderer::ParseTextures(const aiScene* scene, Mesh& outMesh, MeshLoadingContext& outContext) {
+void Renderer::ParseTextures(const aiScene* scene, MeshData& outMesh, MeshLoadingContext& outContext) {
     outMesh.materials.resize(scene->mNumMaterials);
     for (size_t i = 0; i < outMesh.materials.size(); ++i) {
         auto material = scene->mMaterials[i];
@@ -1019,7 +1027,7 @@ void Renderer::Render(UIManager* uiManager) {
     }
     uiManager->BeginFrame();
 
-    CameraGPU cameraData{};
+    CameraData cameraData{};
     InitCameraData(mCameraNodes[0], context.cameraData);
 
     RecordModelCommands(context);
@@ -1045,7 +1053,7 @@ bool Renderer::BeginRenderPass(RenderPassContext& context) {
     return true;
 }
 
-void Renderer::InitCameraData(const CameraNode* cameraNode, CameraGPU& outCameraData) const {
+void Renderer::InitCameraData(const CameraNode* cameraNode, CameraData& outCameraData) const {
     auto& camera = cameraNode->mCamera;
     outCameraData.view = camera->mViewMatrix;
     outCameraData.projection = camera->mProjectionMatrix;
@@ -1081,7 +1089,7 @@ void Renderer::RecordGridCommands(RenderPassContext& context) {
     SDL_BindGPUIndexBuffer(renderPass, &gridIndexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
     
     glm::mat4 gridModelMatrix = glm::mat4(1.0f);
-    SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraGPU));
+    SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraData));
     SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &gridModelMatrix, sizeof(glm::mat4));
     
     GridParamsFragGPU gridParamsFragGPU{};
@@ -1123,14 +1131,17 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
     static SceneLighting s_lighting;
     if (!s_lighting.inited) {
         s_lighting.inited = true;
-        s_lighting.pointLights[0].position = {0.0f, 5.0f, 0.0f};
-        s_lighting.pointLights[0].enabled = true;
-        s_lighting.pointLights[1].position = {5.0f, 5.0f, 0.0f};
-        s_lighting.pointLights[1].enabled = true;
-        s_lighting.pointLights[2].position = {10.0f, 5.0f, 0.0f};
-        s_lighting.pointLights[2].enabled = true;
-        s_lighting.pointLights[3].position = {15.0f, 5.0f, 0.0f};
-        s_lighting.pointLights[3].enabled = true;
+        s_lighting.pointLights[0].position = {  0.0f, 5.0f,  0.0f};
+        s_lighting.pointLights[1].position = { 17.0f, 5.0f,  0.0f};
+        s_lighting.pointLights[2].position = {-17.0f, 5.0f,  0.0f};
+
+        s_lighting.pointLights[3].position = {  0.0f, 5.0f,  7.0f};
+        s_lighting.pointLights[4].position = { 17.0f, 5.0f,  7.0f};
+        s_lighting.pointLights[5].position = {-17.0f, 5.0f,  7.0f};
+        
+        s_lighting.pointLights[6].position = {  0.0f, 5.0f, -7.0f};
+        s_lighting.pointLights[7].position = { 17.0f, 5.0f, -7.0f};
+        s_lighting.pointLights[8].position = {-17.0f, 5.0f, -7.0f};
     }
     
     SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);
@@ -1138,7 +1149,7 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
     for (auto& node : mNodesThisFrame) {
         if (!node->mDisplay->mShow) continue;
         
-        const Mesh& mesh = *(node->mDisplay->mMesh);
+        const MeshData& mesh = *(node->mDisplay->mMesh);
         const TransformComponent& transform = *(node->mTransform);
         SDL_GPUTexture* diffuseTexture = GetTexture(mesh, aiTextureType_BASE_COLOR);
         std::vector<SDL_GPUBufferBinding> vertexBufferBindings{{mesh.vertexBuffer, 0}};
@@ -1146,7 +1157,7 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
         SDL_GPUBufferBinding indexBufferBinding{mesh.indexBuffer, 0};
         SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
 
-        for (const MeshEntry& submesh : mesh.submeshes) {
+        for (const SubMeshData& submesh : mesh.submeshes) {
             const PBRMaterial& material = mesh.materials[submesh.materialIndex];
             std::vector<SDL_GPUTextureSamplerBinding> samplerBindings;
             GetValidTextureBindings(material, samplerBindings);
@@ -1160,10 +1171,11 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
             modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.x), glm::vec3(1, 0, 0));
             modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));
             
-            SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraGPU));
+            SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraData));
             SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &modelMatrix, sizeof(glm::mat4));
-            SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &s_lighting.pointLights[0].position, sizeof(glm::vec3));
-            SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &s_lighting.pointLights[0].color, sizeof(glm::vec3));
+            SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &s_lighting.pointLights, sizeof(s_lighting.pointLights));
+            //SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &s_lighting.pointLights[0].position, sizeof(glm::vec3));
+            //SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &s_lighting.pointLights[0].color, sizeof(glm::vec3));
     
             SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(submesh.numIndices), 1, submesh.baseIndex, submesh.baseVertex, 0);
         }
@@ -1223,7 +1235,7 @@ void Renderer::Shutdown() {
     }
     
     for (auto& namedMesh : mMeshes) {
-        Mesh& mesh = namedMesh.second;
+        MeshData& mesh = namedMesh.second;
         if (mesh.vertexBuffer) SDL_ReleaseGPUBuffer(mSDLDevice, mesh.vertexBuffer);
         if (mesh.indexBuffer) SDL_ReleaseGPUBuffer(mSDLDevice, mesh.indexBuffer);
         for (auto [type, meshTexture] : mesh.textureIdMap) {
