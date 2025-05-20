@@ -18,12 +18,16 @@ set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_INSTALL_PDB ON CACHE BOOL "" FORCE)
 add_subdirectory(assimp)
 
+# Add flecs
+add_subdirectory(flecs)
+
 # Setup vendor interface
 add_library(vendor INTERFACE)
 
 # Link Libraries
 target_link_libraries(vendor INTERFACE 
         assimp
+        flecs::flecs_static
         glm::glm
         SDL3::SDL3
         SDL3_image::SDL3_image
@@ -42,10 +46,15 @@ target_sources(vendor INTERFACE
                 ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends/imgui_impl_sdl3.h
                 ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends/imgui_impl_sdl3.cpp
                 ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends/imgui_impl_sdlgpu3.h
-                ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends/imgui_impl_sdlgpu3.cpp)
+                ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends/imgui_impl_sdlgpu3.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/ImGuizmo/ImGuizmo.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/ImGuizmo/ImGuizmo.cpp
+                )
 target_include_directories(vendor INTERFACE
                             ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/
-                            ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends)
+                            ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/imgui/backends
+                            ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/ImGuizmo/
+                            )
 
 target_compile_definitions(vendor INTERFACE
                 GLM_ENABLE_EXPERIMENTAL
