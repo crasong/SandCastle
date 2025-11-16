@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Components.h>
+#include <atomic>
 #include <format>
 #include <memory>
 #include <string>
@@ -13,24 +14,24 @@ public:
     Entity() : mID(GetNextID()), mName(std::format("entity%i", mID)) {}
     Entity(const std::string& name) : mID(GetNextID()), mName(name) {}
     ~Entity() = default;
-    // allow copying
-    Entity(const Entity& other) {
+
+    // Delete copy constructor and assignment to prevent object slicing bugs
+    Entity(const Entity& other) = delete;
+    Entity& operator=(const Entity& other) = delete;
+
+    // Allow moving
+    Entity(Entity&& other) noexcept {
         mID = other.mID;
-        mName = other.mName;
-        // iterate through the other entity's components and copy them to this entity
-        for (const auto& [typeIndex, component] : other.mComponents) {
-            mComponents[typeIndex] = std::make_unique<Component>(*component);
-        }
+        mName = std::move(other.mName);
+        mComponents = std::move(other.mComponents);
     }
-    Entity(Entity&& other ) {
-        mID = other.mID;
-        mName = other.mName;
-        // iterate through the other entity's components and move them to this entity
-        for (auto& [typeIndex, component] : other.mComponents) {
-            mComponents[typeIndex] = std::move(component);
+    Entity& operator=(Entity&& other) noexcept {
+        if (this != &other) {
+            mID = other.mID;
+            mName = std::move(other.mName);
+            mComponents = std::move(other.mComponents);
         }
-        // clear the other entity's components
-        other.mComponents.clear();
+        return *this;
     }
 
     void PostRegistration();
@@ -77,8 +78,8 @@ protected:
     std::string mName = ""; // Name of the entity
     std::unordered_map<std::type_index, std::unique_ptr<Component>> mComponents;
 
-    static uint32_t s_NextID; // Static variable to keep track of the next ID to assign
+    static std::atomic<uint32_t> s_NextID; // Static variable to keep track of the next ID to assign
     static uint32_t GetNextID() {
-        return s_NextID++;
+        return s_NextID.fetch_add(1, std::memory_order_relaxed);
     }
 };

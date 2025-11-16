@@ -6,10 +6,6 @@
 #include <Nodes.h>
 #include <Systems.h>
 
-static bool s_Running = true;
-static float deltaTime = 0.0f;
-static uint64_t lastTicks = 0;
-
 bool Engine::Init() {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_CAMERA | SDL_INIT_AUDIO)) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
@@ -21,61 +17,61 @@ bool Engine::Init() {
         return false;
     }
 
-    mUIManager.Init(mRenderer.mWindow, mRenderer.mSDLDevice);
+    mUIManager.Init(mRenderer.GetWindow(), mRenderer.GetDevice());
     
     mSystems.resize(ISystem::SystemPriority::count);
-    AddSystem(new MoveSystem());
-    AddSystem(new CameraSystem(&mRenderer));
-    AddSystem(new RenderSystem(&mRenderer));
-    AddSystem(new UISystem(&mUIManager));
+    AddSystem<MoveSystem>();
+    AddSystem<CameraSystem>(&mRenderer);
+    AddSystem<RenderSystem>(&mRenderer);
+    AddSystem<UISystem>(&mUIManager);
 
-    // Make sample entity
+    // Make sample entities (TODO: Move to Game layer or config file)
     {
-        Entity entity("Camera");
-        entity.AddComponent<CameraComponent>();
-        entity.AddComponent<TransformComponent>(
-            glm::vec3(0.0f, 3.0f, 0.0f), 
-            glm::vec3(0.0f, 0.0f, 0.0f), 
+        auto entity = CreateEntity("Camera");
+        entity->AddComponent<CameraComponent>();
+        entity->AddComponent<TransformComponent>(
+            glm::vec3(0.0f, 3.0f, 0.0f),
+            glm::vec3(0.0f, 0.0f, 0.0f),
             glm::vec3(1.0f)
         );
-        entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
-        entity.AddComponent<UIComponent>();
-        AddEntity(new Entity(std::move(entity)));
+        entity->AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+        entity->AddComponent<UIComponent>();
+        AddEntityInternal(std::move(entity));
     }
     {
-        Entity entity("Sponza");
-        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["Sponza"]);
-        entity.AddComponent<TransformComponent>(
-            glm::vec3(0.0f, 0.0f, 0.0f), 
-            glm::vec3(0.0f, 0.0f, 0.0f), 
+        auto entity = CreateEntity("Sponza");
+        entity->AddComponent<DisplayComponent>(mRenderer.GetMesh("Sponza"));
+        entity->AddComponent<TransformComponent>(
+            glm::vec3(0.0f, 0.0f, 0.0f),
+            glm::vec3(0.0f, 0.0f, 0.0f),
             glm::vec3(2.0f));
-        entity.AddComponent<UIComponent>();
-        AddEntity(new Entity(std::move(entity)));
+        entity->AddComponent<UIComponent>();
+        AddEntityInternal(std::move(entity));
     }
     {
-        Entity entity("Space Helmet");
-        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["DamagedHelmet"]);
-        entity.AddComponent<TransformComponent>(
-            glm::vec3(3.0f, 2.0f, 0.0f), 
-            glm::vec3(0.0f, 0.0f, 0.0f), 
+        auto entity = CreateEntity("Space Helmet");
+        entity->AddComponent<DisplayComponent>(mRenderer.GetMesh("DamagedHelmet"));
+        entity->AddComponent<TransformComponent>(
+            glm::vec3(3.0f, 2.0f, 0.0f),
+            glm::vec3(0.0f, 0.0f, 0.0f),
             glm::vec3(1.0f));
-        entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
-        entity.AddComponent<UIComponent>();
-        AddEntity(new Entity(std::move(entity)));
+        entity->AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+        entity->AddComponent<UIComponent>();
+        AddEntityInternal(std::move(entity));
     }
     {
-        Entity entity("Sci Fi Helmet");
-        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["SciFiHelmet"]);
-        entity.AddComponent<TransformComponent>(
-            glm::vec3(-3.0f, 2.0f, 0.0f), 
-            glm::vec3(0.0f, 135.0f, 0.0f), 
+        auto entity = CreateEntity("Sci Fi Helmet");
+        entity->AddComponent<DisplayComponent>(mRenderer.GetMesh("SciFiHelmet"));
+        entity->AddComponent<TransformComponent>(
+            glm::vec3(-3.0f, 2.0f, 0.0f),
+            glm::vec3(0.0f, 135.0f, 0.0f),
             glm::vec3(1.0f));
-        entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
-        entity.AddComponent<UIComponent>();
-        AddEntity(new Entity(std::move(entity)));
+        entity->AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+        entity->AddComponent<UIComponent>();
+        AddEntityInternal(std::move(entity));
     }
 
-    lastTicks = SDL_GetTicks();
+    mLastTicks = SDL_GetTicks();
     return true;
 }
 
@@ -84,29 +80,16 @@ void Engine::Shutdown() {
         for (auto& system : systemList) {
             if (system) {
                 system->Shutdown();
-                delete system;
             }
         }
     }
-    for (auto& entity : mEntities) {
-        delete entity;
-    }
+    mSystems.clear();
     mEntities.clear();
     SDL_Quit();
 }
 
-bool Engine::IsRunning() {
-    return s_Running;
-}
-
-float Engine::GetDeltaTime() {
-    return deltaTime;
-}
-
 void Engine::Run() {
     PollEvents();
-
-    //Draw();
 }
 
 void Engine::PollEvents() {
@@ -115,7 +98,7 @@ void Engine::PollEvents() {
         ImGui_ImplSDL3_ProcessEvent(&event);
         switch (event.type) {
             case SDL_EVENT_QUIT:
-                s_Running = false;
+                mRunning = false;
                 break;
             case SDL_EVENT_KEY_DOWN:
             case SDL_EVENT_KEY_UP:
@@ -147,8 +130,8 @@ void Engine::PollEvents() {
 
     // Delta time
     uint64_t currentTicks = SDL_GetTicks();
-    deltaTime = (currentTicks - lastTicks) / 1000.0f;
-    lastTicks = currentTicks;
+    mDeltaTime = (currentTicks - mLastTicks) / 1000.0f;
+    mLastTicks = currentTicks;
 }
 
 void Engine::Draw() {
@@ -157,12 +140,34 @@ void Engine::Draw() {
 }
 
 
-bool Engine::AddSystem(ISystem* system) {
-    if (system && system->Init()) {
-        mSystems[system->mPriority].push_back(std::move(system));
-        return true;
+std::unique_ptr<Entity> Engine::CreateEntity(const std::string& name) {
+    if (name.empty()) {
+        return std::make_unique<Entity>();
     }
-    return false;
+    return std::make_unique<Entity>(name);
+}
+
+void Engine::DestroyEntity(uint32_t entityID) {
+    auto it = std::remove_if(mEntities.begin(), mEntities.end(),
+        [entityID](const std::unique_ptr<Entity>& entity) {
+            return entity->mID == entityID;
+        });
+
+    if (it != mEntities.end()) {
+        mEntities.erase(it, mEntities.end());
+    }
+}
+
+void Engine::AddEntityInternal(std::unique_ptr<Entity> entity) {
+    for (auto& systemList : mSystems) {
+        for (auto& system : systemList) {
+            if (system) {
+                system->AddNodeForEntity(*entity);
+            }
+        }
+    }
+    entity->PostRegistration();
+    mEntities.push_back(std::move(entity));
 }
 
 void Engine::Update(float deltaTime) {
@@ -179,37 +184,13 @@ void Engine::Update(float deltaTime) {
     }
 }
 
-void Engine::RemoveSystem(ISystem* system) {
-    for (auto& systemList : mSystems) {
-        auto it = std::remove(systemList.begin(), systemList.end(), system);
-        if (it != systemList.end()) {
-            (*it)->Shutdown();
-            systemList.erase(it, systemList.end());
-            delete system;
-            break;
-        }
-    }
-}
-
-void Engine::AddEntity(Entity* entity) {
-    for (auto& systemList : mSystems) {
-        for (auto& system : systemList) {
-            if (system) {
-                system->AddNodeForEntity(*entity);
-            }
-        }
-    }
-    mEntities.push_back(std::move(entity));
-    mEntities.back()->PostRegistration();
-}
-
 void Engine::ProcessEvent(const SDL_KeyboardEvent& event) {
     // Handle keyboard events here
     SDL_Keycode key = event.key;
     mInputState.keyDown[key] = event.down;
     switch(key) {
         case SDLK_ESCAPE:
-            s_Running = false;
+            mRunning = false;
             break;
         case SDLK_LALT:
             mInputState.altKeyDown = event.down;
@@ -225,10 +206,8 @@ void Engine::ProcessEvent(const SDL_KeyboardEvent& event) {
             }
             break;
         case SDLK_UP:
-            //mRenderer.IncreaseScale();
             break;
         case SDLK_DOWN:
-            //mRenderer.DecreaseScale();
             break;
     }
 }
@@ -292,19 +271,6 @@ void Engine::ProcessCameraInput(const float deltaTime, CameraNode* camera) {
         transform->mPosition += glm::normalize(camVel) * camSpeed;
     }
 
-    // cam->mTargetCenter += glm::normalize(camVel) * camSpeed;
-    // if (glm::length(cam->mTargetCenter) > CAMERA_MAX_POSITION) {
-    //     cam->mTargetCenter = glm::normalize(cam->mTargetCenter) * CAMERA_MAX_POSITION;
-    // }
-
-    // DecayTo(cam->mCenter  , cam->mTargetCenter  , 0.98f, deltaTime);
-    // DecayTo(cam->mDistance, cam->mTargetDistance, 0.99f, deltaTime);
-    // DecayTo(cam->mAngle   , cam->mTargetAngle   , 0.99f, deltaTime);
-    // DecayTo(cam->mTilt    , cam->mTargetTilt    , 0.99f, deltaTime);
-
-    //glm::vec4 toPos = glm::rotate(glm::mat4(1.0f), -cam->mTilt, right) * forward4;
-    //transform->mPosition = cam->mCenter - cam->mDistance * glm::normalize(glm::vec3(toPos.x, toPos.y, toPos.z));
-    
     if (mInputState.mouseButtonDown[SDL_BUTTON_LEFT]) {
         if (mInputState.mouseDragging) {
             if (mInputState.altKeyDown) {
@@ -314,13 +280,7 @@ void Engine::ProcessCameraInput(const float deltaTime, CameraNode* camera) {
                 // create direction vector from rotationMatrix
                 glm::vec4 forward4 = rotationMatrix * glm::vec4(0.0f, 0.0f, -1.0f, 1.0f);
                 glm::vec3 forward = glm::vec3(forward4.x, forward4.y, forward4.z);
-    
-                //float yaw = transform->mRotation.y;
-                //glm::vec3 forwardDir{glm::sin(yaw), 0.0f, glm::cos(yaw)};
-                //glm::vec3 rightDir(forwardDir.z, 0.0f, -forwardDir.x);
-                //glm::vec3 upDir(cam->mUp);
-    
-                glm::vec3 orbitPos =  cam->mCenter - (forward * cam->mDistance);
+                glm::vec3 orbitPos = cam->mCenter - (forward * cam->mDistance);
                 transform->mPosition = orbitPos;
             }
         }

@@ -100,7 +100,13 @@ public:
     void IncreaseScale();
     void DecreaseScale();
 
-    glm::vec2 GetWindowCenter() { return mCachedWindowCenter; }
+    glm::vec2 GetWindowCenter() const { return mCachedWindowCenter; }
+    SDL_Window* GetWindow() const { return mWindow; }
+    SDL_GPUDevice* GetDevice() const { return mSDLDevice; }
+    MeshData* GetMesh(const std::string& name) {
+        auto it = mMeshes.find(name);
+        return (it != mMeshes.end()) ? &it->second : nullptr;
+    }
 
     void SetCameraEntity(CameraNode* cameraNode);
     CameraNode* GetCameraEntity() const {
@@ -197,7 +203,4 @@ private:
     const float mScaleStep = 10.0f;
     const float mCameraSpeed = 5.0f;
     const float mCameraRotationSpeed = 0.5f;
-
-    friend class Engine;
-    friend class RenderSystem;
 };
