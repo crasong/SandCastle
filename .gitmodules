@@ -18,4 +18,4 @@
 	url = https://github.com/CedricGuillemet/ImGuizmo.git
 [submodule "vendor/flecs"]
 	path = vendor/flecs
-	url = https://github.com/SanderMertens/flecs
+	url = https://github.com/SanderMertens/flecs.git
