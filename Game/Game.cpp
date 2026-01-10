@@ -1,4 +1,8 @@
 #include "Game.h"
+#include <Entity.h>
+#include <Systems.h>
+
+Game::~Game() = default;
 
 void Game::Run() {
     mEngine = std::make_unique<Engine>();

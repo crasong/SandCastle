@@ -4,6 +4,8 @@
 
 class Game {
 public:
+    ~Game();
+
     void Run();
 
     void Update(float dt);

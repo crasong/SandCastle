@@ -16,6 +16,8 @@ class ISystem;
 
 class Engine {
 public:
+    ~Engine();
+
     bool Init();
     void Shutdown();
     bool IsRunning() const { return mRunning; }

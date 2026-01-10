@@ -6,6 +6,8 @@
 #include <Nodes.h>
 #include <Systems.h>
 
+Engine::~Engine() = default;
+
 bool Engine::Init() {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_CAMERA | SDL_INIT_AUDIO)) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
@@ -150,7 +152,7 @@ std::unique_ptr<Entity> Engine::CreateEntity(const std::string& name) {
 void Engine::DestroyEntity(uint32_t entityID) {
     auto it = std::remove_if(mEntities.begin(), mEntities.end(),
         [entityID](const std::unique_ptr<Entity>& entity) {
-            return entity->mID == entityID;
+            return entity->GetID() == entityID;
         });
 
     if (it != mEntities.end()) {
