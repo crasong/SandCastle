@@ -1,7 +1,9 @@
 #pragma once
 
+#include <Entity.h>
 #include <Input.h>
 #include <Interfaces.h>
+#include <Systems.h>
 #include <memory>
 #include <Renderer.h>
 #include <typeindex>
@@ -11,8 +13,6 @@
 #include <vector>
 
 class CameraNode;
-class Entity;
-class ISystem;
 
 class Engine {
 public:
@@ -26,8 +26,9 @@ public:
     void Draw();
 
     // SystemManager
-    bool AddSystem(ISystem* system);
     void RemoveSystem(ISystem* system); // Jury is still out on when I'd use this
+    template<typename T, typename... Args>
+    void AddSystem(Args&&... args);
 
     void AddEntity(Entity* entity);
 
@@ -46,8 +47,9 @@ private:
 private:
     Renderer mRenderer;
     UIManager mUIManager;
-    std::vector<std::vector<ISystem*>> mSystems;
-    std::vector<Entity*> mEntities;
+    std::vector<std::vector<std::unique_ptr<ISystem>>> mSystems;
+    std::vector<std::unique_ptr<Entity>>               mEntities;
+    std::vector<Entity*> mEntitiesOld;
 
     InputState mInputState;
 };

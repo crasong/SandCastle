@@ -1,10 +1,8 @@
 #include "Engine.h"
 
-#include <Entity.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <imgui_impl_sdl3.h>
 #include <Nodes.h>
-#include <Systems.h>
 
 static bool s_Running = true;
 static float deltaTime = 0.0f;
@@ -24,10 +22,10 @@ bool Engine::Init() {
     mUIManager.Init(mRenderer.mWindow, mRenderer.mSDLDevice);
     
     mSystems.resize(ISystem::SystemPriority::count);
-    AddSystem(new MoveSystem());
-    AddSystem(new CameraSystem(&mRenderer));
-    AddSystem(new RenderSystem(&mRenderer));
-    AddSystem(new UISystem(&mUIManager));
+    AddSystem<MoveSystem>();
+    AddSystem<CameraSystem>(&mRenderer);
+    AddSystem<RenderSystem>(&mRenderer);
+    AddSystem<UISystem>(&mUIManager);
 
     // Make sample entity
     {
@@ -80,18 +78,10 @@ bool Engine::Init() {
 }
 
 void Engine::Shutdown() {
-    for (auto& systemList : mSystems) {
-        for (auto& system : systemList) {
-            if (system) {
-                system->Shutdown();
-                delete system;
-            }
-        }
-    }
-    for (auto& entity : mEntities) {
+    for (auto& entity : mEntitiesOld) {
         delete entity;
     }
-    mEntities.clear();
+    mEntitiesOld.clear();
     SDL_Quit();
 }
 
@@ -156,15 +146,6 @@ void Engine::Draw() {
     mRenderer.Render(&mUIManager);
 }
 
-
-bool Engine::AddSystem(ISystem* system) {
-    if (system && system->Init()) {
-        mSystems[system->mPriority].push_back(std::move(system));
-        return true;
-    }
-    return false;
-}
-
 void Engine::Update(float deltaTime) {
     ProcessCameraInput(deltaTime, mRenderer.GetCameraEntity());
     mInputState.mouseScroll = { 0.0f, 0.0f };
@@ -179,16 +160,17 @@ void Engine::Update(float deltaTime) {
     }
 }
 
-void Engine::RemoveSystem(ISystem* system) {
-    for (auto& systemList : mSystems) {
-        auto it = std::remove(systemList.begin(), systemList.end(), system);
-        if (it != systemList.end()) {
-            (*it)->Shutdown();
-            systemList.erase(it, systemList.end());
-            delete system;
-            break;
-        }
+template<typename T, typename... Args>
+void Engine::AddSystem(Args&&... args) {
+    static_assert(std::is_base_of<ISystem, T>::value, "T must derive from ISystem");
+    auto system = std::make_unique<T>(std::forward<Args>(args)...);
+    if (system->Init()) {
+        mSystems[system->mPriority].push_back(std::move(system));
     }
+}
+
+void Engine::RemoveSystem(ISystem* system) {
+    
 }
 
 void Engine::AddEntity(Entity* entity) {
@@ -199,8 +181,8 @@ void Engine::AddEntity(Entity* entity) {
             }
         }
     }
-    mEntities.push_back(std::move(entity));
-    mEntities.back()->PostRegistration();
+    mEntitiesOld.push_back(std::move(entity));
+    mEntitiesOld.back()->PostRegistration();
 }
 
 void Engine::ProcessEvent(const SDL_KeyboardEvent& event) {
