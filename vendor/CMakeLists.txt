@@ -16,6 +16,7 @@ add_subdirectory(glm)
 set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_INSTALL_PDB ON CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_MINIZIP ON CACHE BOOL "" FORCE)
 add_subdirectory(assimp)
 
 # Add flecs
