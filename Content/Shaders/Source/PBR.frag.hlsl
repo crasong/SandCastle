@@ -29,8 +29,8 @@ float3 BlinnPhong(float3x3 TBN, float3 viewPos, float3 fragPos, float3 lightPos,
 
   if (distance < radius) {
     float ambientStrength = 0.1f;
-    float3 ambient = ambientStrength * lightColor;
-    // float3 ambient = AOTex.Sample(Sampler, uv).rgb * lightColor;
+    // float3 ambient = ambientStrength * lightColor;
+    float3 ambient = AOTex.Sample(Sampler, uv).rgb * lightColor;
 
     float3 norm = NormalTex.Sample(Sampler, uv).rgb;
     norm = normalize(norm * 2.0f - 1.0f);
@@ -52,8 +52,8 @@ float3 BlinnPhong(float3x3 TBN, float3 viewPos, float3 fragPos, float3 lightPos,
 
     diffuse *= attenuation;
     specular *= attenuation;
-    ambient *= attenuation;
-    // resultLight = diffuse + specular + ambient;
+    // ambient *= attenuation;
+    //  resultLight = diffuse + specular + ambient;
     resultLight = diffuse + specular;
     // resultLight = norm;
   }
@@ -72,6 +72,6 @@ float4 main(Input input) : SV_Target0 {
                          u_lightcolor, input.UV);
   }
   result *= texColor.rgb;
-  // result = pow(result, float3(gamma, gamma, gamma));
+  result = pow(result, float3(gamma, gamma, gamma));
   return float4(result, 1.0f);
 }
