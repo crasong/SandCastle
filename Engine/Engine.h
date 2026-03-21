@@ -26,11 +26,11 @@ public:
     void Draw();
 
     // SystemManager
-    void RemoveSystem(ISystem* system); // Jury is still out on when I'd use this
     template<typename T, typename... Args>
     void AddSystem(Args&&... args);
 
-    void AddEntity(Entity* entity);
+    std::unique_ptr<Entity> CreateEntity(const std::string& name);
+    void DestroyEntity(uint32_t entityId);
 
     template<typename T>
     void DecayTo(T& value, T target, float rate, float deltaTime);
@@ -43,13 +43,13 @@ private:
     void ProcessEvent(const SDL_WindowEvent& event);
 
     void ProcessCameraInput(const float deltaTime, CameraNode* camera);
-    
+
+    void AddEntityInternal(std::unique_ptr<Entity> entity);
 private:
     Renderer mRenderer;
     UIManager mUIManager;
     std::vector<std::vector<std::unique_ptr<ISystem>>> mSystems;
     std::vector<std::unique_ptr<Entity>>               mEntities;
-    std::vector<Entity*> mEntitiesOld;
 
     InputState mInputState;
 };

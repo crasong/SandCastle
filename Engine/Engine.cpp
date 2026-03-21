@@ -29,48 +29,48 @@ bool Engine::Init() {
 
     // Make sample entity
     {
-        Entity entity("Camera");
-        entity.AddComponent<CameraComponent>();
-        entity.AddComponent<TransformComponent>(
+        auto entity = CreateEntity("Camera");
+        entity->AddComponent<CameraComponent>();
+        entity->AddComponent<TransformComponent>(
             glm::vec3(0.0f, 3.0f, 0.0f), 
             glm::vec3(0.0f, 0.0f, 0.0f), 
             glm::vec3(1.0f)
         );
-        entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
-        entity.AddComponent<UIComponent>();
-        AddEntity(new Entity(std::move(entity)));
+        entity->AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+        entity->AddComponent<UIComponent>();
+        AddEntityInternal(std::move(entity));
     }
     {
-        Entity entity("Sponza");
-        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["Sponza"]);
-        entity.AddComponent<TransformComponent>(
+        auto entity = CreateEntity("Sponza");
+        entity->AddComponent<DisplayComponent>(&mRenderer.mMeshes["Sponza"]);
+        entity->AddComponent<TransformComponent>(
             glm::vec3(0.0f, 0.0f, 0.0f), 
             glm::vec3(0.0f, 0.0f, 0.0f), 
             glm::vec3(2.0f));
-        entity.AddComponent<UIComponent>();
-        AddEntity(new Entity(std::move(entity)));
+        entity->AddComponent<UIComponent>();
+        AddEntityInternal(std::move(entity));
     }
     {
-        Entity entity("Space Helmet");
-        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["DamagedHelmet"]);
-        entity.AddComponent<TransformComponent>(
+        auto entity = CreateEntity("Space Helmet");
+        entity->AddComponent<DisplayComponent>(&mRenderer.mMeshes["DamagedHelmet"]);
+        entity->AddComponent<TransformComponent>(
             glm::vec3(3.0f, 2.0f, 0.0f), 
             glm::vec3(0.0f, 0.0f, 0.0f), 
             glm::vec3(1.0f));
-        entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
-        entity.AddComponent<UIComponent>();
-        AddEntity(new Entity(std::move(entity)));
+        entity->AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+        entity->AddComponent<UIComponent>();
+        AddEntityInternal(std::move(entity));
     }
     {
-        Entity entity("Sci Fi Helmet");
-        entity.AddComponent<DisplayComponent>(&mRenderer.mMeshes["SciFiHelmet"]);
-        entity.AddComponent<TransformComponent>(
+        auto entity = CreateEntity("Sci Fi Helmet");
+        entity->AddComponent<DisplayComponent>(&mRenderer.mMeshes["SciFiHelmet"]);
+        entity->AddComponent<TransformComponent>(
             glm::vec3(-3.0f, 2.0f, 0.0f), 
             glm::vec3(0.0f, 135.0f, 0.0f), 
             glm::vec3(1.0f));
-        entity.AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
-        entity.AddComponent<UIComponent>();
-        AddEntity(new Entity(std::move(entity)));
+        entity->AddComponent<VelocityComponent>(glm::vec3(), glm::vec3());
+        entity->AddComponent<UIComponent>();
+        AddEntityInternal(std::move(entity));
     }
 
     lastTicks = SDL_GetTicks();
@@ -78,10 +78,10 @@ bool Engine::Init() {
 }
 
 void Engine::Shutdown() {
-    for (auto& entity : mEntitiesOld) {
-        delete entity;
+    for (auto& entity : mEntities) {
+        
     }
-    mEntitiesOld.clear();
+    mEntities.clear();
     SDL_Quit();
 }
 
@@ -169,11 +169,17 @@ void Engine::AddSystem(Args&&... args) {
     }
 }
 
-void Engine::RemoveSystem(ISystem* system) {
-    
+std::unique_ptr<Entity> Engine::CreateEntity(const std::string& name) {
+    if (name.empty()) {
+        return std::make_unique<Entity>();
+    }
+    return std::make_unique<Entity>(name);
 }
 
-void Engine::AddEntity(Entity* entity) {
+void Engine::DestroyEntity(uint32_t entityId) {
+}
+
+void Engine::AddEntityInternal(std::unique_ptr<Entity> entity) {
     for (auto& systemList : mSystems) {
         for (auto& system : systemList) {
             if (system) {
@@ -181,8 +187,8 @@ void Engine::AddEntity(Entity* entity) {
             }
         }
     }
-    mEntitiesOld.push_back(std::move(entity));
-    mEntitiesOld.back()->PostRegistration();
+    mEntities.push_back(std::move(entity));
+    mEntities.back()->PostRegistration();
 }
 
 void Engine::ProcessEvent(const SDL_KeyboardEvent& event) {
