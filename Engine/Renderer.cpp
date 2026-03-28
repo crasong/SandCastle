@@ -932,40 +932,24 @@ void Renderer::ParseNodes(MeshData& outMesh, MeshLoadingContext& outContext) {
 
         SceneNode scenenode{parentId, nodeId};
 
+        // Assign this node's ID to its meshes
+        for (unsigned int m = 0; m < curr.pNode->mNumMeshes; ++m) {
+            unsigned int meshIndex = curr.pNode->mMeshes[m];
+            if (meshIndex < outMesh.submeshes.size()) {
+                outMesh.submeshes[meshIndex].nodeId = nodeId;
+            }
+        }
         totalChildMeshes += curr.pNode->mNumMeshes;
-        // Set transform for meshes in this node;
-        aiMatrix4x4 currMatrix = curr.pNode->mTransformation;
-        aiVector3f pos, rot, scale;
-        currMatrix.Decompose(scale, rot, pos);
-        glm::mat4 nodeTransform = glm::mat4(1.0f);
-        nodeTransform = glm::translate(nodeTransform, glm::vec3(pos.x, pos.y, pos.z));
-        nodeTransform = glm::rotate(nodeTransform, rot.z, glm::vec3(0, 0, 1));
-        nodeTransform = glm::rotate(nodeTransform, rot.y, glm::vec3(0, 1, 0));
-        nodeTransform = glm::rotate(nodeTransform, rot.x, glm::vec3(1, 0, 0));
-        nodeTransform = glm::scale(nodeTransform, glm::vec3(scale.x, scale.y, scale.z));
-        //scenenode.transformation[0][0] = curr.pNode->mTransformation[0][0];
-        //scenenode.transformation[0][1] = curr.pNode->mTransformation[0][1];
-        //scenenode.transformation[0][2] = curr.pNode->mTransformation[0][2];
-        //scenenode.transformation[0][3] = curr.pNode->mTransformation[0][3];
-        //scenenode.transformation[1][0] = curr.pNode->mTransformation[1][0];
-        //scenenode.transformation[1][1] = curr.pNode->mTransformation[1][1];
-        //scenenode.transformation[1][2] = curr.pNode->mTransformation[1][2];
-        //scenenode.transformation[1][3] = curr.pNode->mTransformation[1][3];
-        //scenenode.transformation[2][0] = curr.pNode->mTransformation[2][0];
-        //scenenode.transformation[2][1] = curr.pNode->mTransformation[2][1];
-        //scenenode.transformation[2][2] = curr.pNode->mTransformation[2][2];
-        //scenenode.transformation[2][3] = curr.pNode->mTransformation[2][3];
-        //scenenode.transformation[3][0] = curr.pNode->mTransformation[3][0];
-        //scenenode.transformation[3][1] = curr.pNode->mTransformation[3][1];
-        //scenenode.transformation[3][2] = curr.pNode->mTransformation[3][2];
-        //scenenode.transformation[3][3] = curr.pNode->mTransformation[3][3];
-        //scenenode.transformation = glm::transpose(scenenode.transformation);
+        // Copy Assimp's row-major matrix to GLM's column-major format
+        const aiMatrix4x4& m = curr.pNode->mTransformation;
+        glm::mat4 nodeTransform(
+            m.a1, m.b1, m.c1, m.d1,
+            m.a2, m.b2, m.c2, m.d2,
+            m.a3, m.b3, m.c3, m.d3,
+            m.a4, m.b4, m.c4, m.d4
+        );
         scenenode.transformation = nodeTransform;
 
-        // if (parentId > -1) {
-        //     outMesh.nodeMap[parentId].childIds.emplace_back(nodeId);
-        //     scenenode.transformation = outMesh.nodeMap[parentId].transformation * scenenode.transformation;
-        // }
         outMesh.nodeMap.emplace(nodeId, scenenode);
         parentId = nodeId;
         ++nodeId;
@@ -1263,13 +1247,14 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
             GetValidTextureBindings(material, samplerBindings);
             SDL_BindGPUFragmentSamplers(renderPass, 0, samplerBindings.data(), static_cast<Uint32>(samplerBindings.size()));
     
-            // model matrix
-            glm::mat4 modelMatrix = submesh.transformation;
+            // model matrix: component world transform * mesh node transform
+            glm::mat4 modelMatrix = glm::mat4(1.0f);
             modelMatrix = glm::translate(modelMatrix, transform.mPosition);
             modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.z), glm::vec3(0, 0, 1));
             modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.y), glm::vec3(0, 1, 0));
             modelMatrix = glm::rotate(modelMatrix, glm::radians(transform.mRotation.x), glm::vec3(1, 0, 0));
             modelMatrix = glm::scale(modelMatrix, transform.mScale * glm::vec3(mScale));
+            modelMatrix = modelMatrix * submesh.transformation;
             
             SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraData));
             SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &modelMatrix, sizeof(glm::mat4));
