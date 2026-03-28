@@ -19,7 +19,7 @@ bool Engine::Init() {
         return false;
     }
 
-    mUIManager.Init(mRenderer.mWindow, mRenderer.mSDLDevice);
+    mUIManager.Init(mRenderer.GetWindow(), mRenderer.GetDevice());
     
     mSystems.resize(ISystem::SystemPriority::count);
     AddSystem<MoveSystem>();
@@ -42,7 +42,7 @@ bool Engine::Init() {
     }
     {
         auto entity = CreateEntity("Sponza");
-        entity->AddComponent<DisplayComponent>(&mRenderer.mMeshes["Sponza"]);
+        entity->AddComponent<DisplayComponent>(mRenderer.GetMeshData("Sponza"));
         entity->AddComponent<TransformComponent>(
             glm::vec3(0.0f, 0.0f, 0.0f), 
             glm::vec3(0.0f, 0.0f, 0.0f), 
@@ -52,7 +52,7 @@ bool Engine::Init() {
     }
     {
         auto entity = CreateEntity("Space Helmet");
-        entity->AddComponent<DisplayComponent>(&mRenderer.mMeshes["DamagedHelmet"]);
+        entity->AddComponent<DisplayComponent>(mRenderer.GetMeshData("DamagedHelmet"));
         entity->AddComponent<TransformComponent>(
             glm::vec3(3.0f, 2.0f, 0.0f), 
             glm::vec3(0.0f, 0.0f, 0.0f), 
@@ -63,7 +63,7 @@ bool Engine::Init() {
     }
     {
         auto entity = CreateEntity("Sci Fi Helmet");
-        entity->AddComponent<DisplayComponent>(&mRenderer.mMeshes["SciFiHelmet"]);
+        entity->AddComponent<DisplayComponent>(mRenderer.GetMeshData("SciFiHelmet"));
         entity->AddComponent<TransformComponent>(
             glm::vec3(-3.0f, 2.0f, 0.0f), 
             glm::vec3(0.0f, 135.0f, 0.0f), 

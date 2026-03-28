@@ -670,7 +670,19 @@ bool Renderer::CreateFallbackTexture(
     // this will depend on the type of texture, and we should follow the gltf spec
     // For emissive: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#_material_emissivetexture
     const SDL_PixelFormatDetails* formatDetails = SDL_GetPixelFormatDetails(format);
-    Uint32 color = SDL_MapRGBA(formatDetails, nullptr, 255, 255, 255, 255);
+    Uint32 color;
+    switch (type) {
+        case aiTextureType_METALNESS:
+        case aiTextureType_EMISSIVE:
+            color = SDL_MapRGBA(formatDetails, nullptr, 0, 0, 0, 0);
+            break;
+        case aiTextureType_NORMALS:
+            color = SDL_MapRGBA(formatDetails, nullptr, 128, 128, 255, 255);
+            break;
+        default: // roughness, AO, albedo
+            color = SDL_MapRGBA(formatDetails, nullptr, 255, 255, 255, 255);
+            break;
+    }
     if (!SDL_FillSurfaceRect(surface, nullptr, color)) {
         return false;
     }
@@ -999,10 +1011,12 @@ void Renderer::ParseTextures(const aiScene* scene, MeshData& outMesh, MeshLoadin
                 textureContext.type = type;
                 if (material->GetTexture(type, 0, &texturePath) == AI_SUCCESS) {
                     textureContext.filename = texturePath.data;
+                    SDL_Log("  [%s] Texture found: %s (type %d)", material->GetName().C_Str(), texturePath.C_Str(), type);
                 }
                 else {
                     textureContext.bUseFallback = true;
                     textureContext.filename = aiTextureTypeToString(type);
+                    SDL_Log("  [%s] FALLBACK for type %d (%s)", material->GetName().C_Str(), type, aiTextureTypeToString(type));
                 }
                 materialContext.textureContextMap.emplace(type, textureContext);
             }
