@@ -27,6 +27,9 @@ public:
     void SubmitNode(UINode* node) {
         mNodesThisFrame.push_back(node);
     }
+
+    void SetDebugLightsToggle(bool* toggle) { mDebugLightsToggle = toggle; }
+
 protected:
     void DockSpaceUI();
     void ToolbarUI();
@@ -34,4 +37,5 @@ protected:
     float mMenuBarHeight = 10.0f;
 
     std::vector<UINode*> mNodesThisFrame;
+    bool* mDebugLightsToggle = nullptr;
 };

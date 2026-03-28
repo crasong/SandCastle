@@ -150,6 +150,10 @@ void UIManager::ToolbarUI()
 	ImGui::Button("Toolbar goes here", ImVec2(0, 37));
     ImGui::SameLine();
     ImGui::Checkbox("Demo Window", &show_demo_window);
+    if (mDebugLightsToggle) {
+        ImGui::SameLine();
+        ImGui::Checkbox("Show Lights", mDebugLightsToggle);
+    }
   
 	ImGui::End();
 }

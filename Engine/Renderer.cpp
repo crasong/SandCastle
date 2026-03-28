@@ -316,11 +316,95 @@ bool Renderer::InitMeshPipeline() {
     return true;
 }
 
+bool Renderer::InitBillboardPipeline() {
+    SDL_GPUShader* vertShader = LoadShader(mSDLDevice, "Billboard.vert", 0, 2, 0, 0);
+    if (!vertShader) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Billboard Vertex Shader failed to load");
+        return false;
+    }
+    SDL_GPUShader* fragShader = LoadShader(mSDLDevice, "Billboard.frag", 0, 0, 0, 0);
+    if (!fragShader) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Billboard Fragment Shader failed to load");
+        return false;
+    }
+
+    SDL_GPUColorTargetBlendState colorBlendState{};
+    colorBlendState.color_write_mask = SDL_GPU_COLORCOMPONENT_R | SDL_GPU_COLORCOMPONENT_G | SDL_GPU_COLORCOMPONENT_B | SDL_GPU_COLORCOMPONENT_A;
+    colorBlendState.enable_color_write_mask = true;
+    colorBlendState.enable_blend = true;
+    colorBlendState.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+    colorBlendState.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    colorBlendState.color_blend_op = SDL_GPU_BLENDOP_ADD;
+    colorBlendState.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    colorBlendState.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+    colorBlendState.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+
+    SDL_GPUColorTargetDescription colorTargetDescription{};
+    colorTargetDescription.format = SDL_GetGPUSwapchainTextureFormat(mSDLDevice, mWindow);
+    colorTargetDescription.blend_state = colorBlendState;
+    std::vector colorTargetDescriptions{colorTargetDescription};
+    SDL_GPUGraphicsPipelineTargetInfo pipelineTargetInfo{};
+    pipelineTargetInfo.color_target_descriptions = colorTargetDescriptions.data();
+    pipelineTargetInfo.num_color_targets = static_cast<Uint32>(colorTargetDescriptions.size());
+    pipelineTargetInfo.has_depth_stencil_target = true;
+
+    if (SDL_GPUTextureSupportsFormat(
+        mSDLDevice,
+        SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
+        SDL_GPU_TEXTURETYPE_2D,
+        SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+        pipelineTargetInfo.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
+    }
+    else if (SDL_GPUTextureSupportsFormat(
+        mSDLDevice,
+        SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT,
+        SDL_GPU_TEXTURETYPE_2D,
+        SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+        pipelineTargetInfo.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT;
+    }
+    else {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "No depth-stencil format supported");
+        return false;
+    }
+
+    SDL_GPUDepthStencilState depthStencilState{
+        .compare_op = SDL_GPU_COMPAREOP_LESS,
+        .enable_depth_test = true,
+        .enable_depth_write = false,
+    };
+
+    // No vertex input — we generate vertices from SV_VertexID
+    SDL_GPUVertexInputState vertexInputState{};
+
+    SDL_GPUGraphicsPipelineCreateInfo pipelineCreateInfo{};
+    pipelineCreateInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+    pipelineCreateInfo.vertex_shader = vertShader;
+    pipelineCreateInfo.fragment_shader = fragShader;
+    pipelineCreateInfo.target_info = pipelineTargetInfo;
+    pipelineCreateInfo.vertex_input_state = vertexInputState;
+    pipelineCreateInfo.depth_stencil_state = depthStencilState;
+    pipelineCreateInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+    pipelineCreateInfo.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+    mBillboardPipeline = SDL_CreateGPUGraphicsPipeline(mSDLDevice, &pipelineCreateInfo);
+    if (!mBillboardPipeline) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create 'Billboard' graphics pipeline");
+        return false;
+    }
+
+    SDL_ReleaseGPUShader(mSDLDevice, vertShader);
+    SDL_ReleaseGPUShader(mSDLDevice, fragShader);
+
+    return true;
+}
+
 bool Renderer::InitPipelines() {
     if (!InitMeshPipeline()) {
         return false;
     }
     if (!InitGridPipeline()) {
+        return false;
+    }
+    if (!InitBillboardPipeline()) {
         return false;
     }
     return true;
@@ -1046,6 +1130,7 @@ void Renderer::Render(UIManager* uiManager) {
 
     RecordModelCommands(context);
     RecordGridCommands(context);
+    RecordDebugLightCommands(context);
     RecordUICommands(context);
 
     EndRenderPass(context);
@@ -1142,10 +1227,9 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
     }
 
     // TEMP
-    static SceneLighting s_lighting;
-    if (!s_lighting.inited) {
-        s_lighting.inited = true;
-        auto& lu = s_lighting.lightsUniform;
+    if (!mSceneLighting.inited) {
+        mSceneLighting.inited = true;
+        auto& lu = mSceneLighting.lightsUniform;
         lu.lights[0].position = {  0.0f, 5.0f,  0.0f};
         lu.lights[1].position = { 17.0f, 5.0f,  0.0f};
         lu.lights[2].position = {-17.0f, 5.0f,  0.0f};
@@ -1189,10 +1273,56 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
             
             SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraData));
             SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &modelMatrix, sizeof(glm::mat4));
-            SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &s_lighting.lightsUniform, sizeof(LightsUniform));
+            SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &mSceneLighting.lightsUniform, sizeof(LightsUniform));
     
             SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(submesh.numIndices), 1, submesh.baseIndex, submesh.baseVertex, 0);
         }
+    }
+
+    SDL_EndGPURenderPass(renderPass);
+}
+
+void Renderer::RecordDebugLightCommands(RenderPassContext& context) {
+    if (!mShowDebugLights) return;
+
+    SDL_GPUColorTargetInfo colorTarget{};
+    colorTarget.texture = context.swapchainTexture;
+    colorTarget.load_op = SDL_GPU_LOADOP_LOAD;
+    colorTarget.store_op = SDL_GPU_STOREOP_STORE;
+    colorTarget.layer_or_depth_plane = 0;
+    std::vector<SDL_GPUColorTargetInfo> colorTargets{colorTarget};
+
+    SDL_GPUDepthStencilTargetInfo depthStencilTarget{};
+    depthStencilTarget.texture = mDepthTexture;
+    depthStencilTarget.load_op = SDL_GPU_LOADOP_LOAD;
+    depthStencilTarget.store_op = SDL_GPU_STOREOP_STORE;
+
+    SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(
+        context.commandBuffer, colorTargets.data(),
+        static_cast<Uint32>(colorTargets.size()), &depthStencilTarget);
+    if (!renderPass) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "SDL_BeginGPURenderPass (debug lights) failed: %s", SDL_GetError());
+        return;
+    }
+
+    struct BillboardUniform {
+        glm::vec3 position;
+        float size;
+        glm::vec4 color;
+    };
+
+    SDL_BindGPUGraphicsPipeline(renderPass, mBillboardPipeline);
+
+    const auto& lu = mSceneLighting.lightsUniform;
+    for (uint32_t i = 0; i < lu.numLights; ++i) {
+        BillboardUniform billboard{};
+        billboard.position = lu.lights[i].position;
+        billboard.size = 0.3f;
+        billboard.color = glm::vec4(lu.lights[i].color, 1.0f);
+
+        SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraData));
+        SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &billboard, sizeof(BillboardUniform));
+        SDL_DrawGPUPrimitives(renderPass, 6, 1, 0, 0);
     }
 
     SDL_EndGPURenderPass(renderPass);

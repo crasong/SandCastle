@@ -20,6 +20,7 @@ bool Engine::Init() {
     }
 
     mUIManager.Init(mRenderer.GetWindow(), mRenderer.GetDevice());
+    mUIManager.SetDebugLightsToggle(mRenderer.GetDebugLightsToggle());
     
     mSystems.resize(ISystem::SystemPriority::count);
     AddSystem<MoveSystem>();

@@ -104,6 +104,7 @@ public:
     glm::vec2 GetWindowCenter() { return mCachedWindowCenter; }
     SDL_Window* GetWindow() { return mWindow; }
     SDL_GPUDevice* GetDevice() { return mSDLDevice; }
+    bool* GetDebugLightsToggle() { return &mShowDebugLights; }
     MeshData* GetMeshData(std::string meshName) {
         return &mMeshes[meshName]; 
     }
@@ -134,6 +135,7 @@ private:
     bool InitCardPipeline();
     bool InitGridPipeline();
     bool InitMeshPipeline();
+    bool InitBillboardPipeline();
     void InitSamplers();
     void InitGrid();
     void InitMeshes();
@@ -144,6 +146,7 @@ private:
     void InitCameraData(const CameraNode* cameraNode, CameraData& outCameraData) const;
     void RecordGridCommands(RenderPassContext& context);
     void RecordModelCommands(RenderPassContext& context);
+    void RecordDebugLightCommands(RenderPassContext& context);
     void RecordUICommands(RenderPassContext& context);
     void EndRenderPass(RenderPassContext& context);
 
@@ -192,13 +195,16 @@ private:
     std::unordered_map<RenderMode, SDL_GPUGraphicsPipeline*> mPipelines;
     std::unordered_map<std::string, MeshData> mMeshes;
     SDL_GPUGraphicsPipeline* mGridPipeline = nullptr;
+    SDL_GPUGraphicsPipeline* mBillboardPipeline = nullptr;
     MeshData mGridMesh;
+    SceneLighting mSceneLighting;
 
     std::vector<CameraNode*> mCameraNodes;
     std::vector<RenderNode*> mNodesThisFrame;
 
     Uint8 mCurrentSamplerIndex = 0;
     RenderMode mRenderMode = RenderMode::Fill;
+    bool mShowDebugLights = false;
     float mScale = 1.0f;
     glm::vec2 mCachedWindowCenter;
     const float mScaleStep = 10.0f;
