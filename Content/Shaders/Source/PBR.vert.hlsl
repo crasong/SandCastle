@@ -8,7 +8,11 @@ cbuffer Camera : register(b0, space1) {
 
 cbuffer Model : register(b1, space1) { float4x4 u_model; };
 
-cbuffer Lights : register(b2, space1) { Light u_lights[9]; };
+cbuffer Lights : register(b2, space1) {
+  uint u_numLights;
+  uint3 _padLights;
+  Light u_lights[MAX_LIGHTS];
+};
 
 struct Input {
   float3 Position : POSITION0;
@@ -22,11 +26,12 @@ struct Output {
   float4 Position : SV_Position;
   float3 ViewPos : POSITION0;
   float3 FragPos : POSITION1;
-  float3 LightsPos[9] : POSITION2;
+  float3 LightsPos[MAX_LIGHTS] : POSITION2;
   float3 Normal : NORMAL0;
   float3 Tangent : TANGENT0;
   float3 Bitangent : TANGENT1;
   float2 UV : TEXCOORD0;
+  uint NumLights : BLENDINDICES0;
 };
 
 Output main(Input input) {
@@ -38,9 +43,10 @@ Output main(Input input) {
   output.Normal    = normalize(mul(u_model, float4(input.Normal,    0.0f))).xyz;
   output.Tangent   = normalize(mul(u_model, float4(input.Tangent,   0.0f))).xyz;
   output.Bitangent = normalize(mul(u_model, float4(input.Bitangent, 0.0f))).xyz;
-  for (int i = 0; i < 9; ++i) {
+  for (int i = 0; i < MAX_LIGHTS; ++i) {
     output.LightsPos[i] = u_lights[i].position;
   }
+  output.NumLights = u_numLights;
   output.UV = input.UV;
   return output;
 }

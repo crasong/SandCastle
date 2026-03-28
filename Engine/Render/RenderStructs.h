@@ -28,6 +28,8 @@ struct SunLight {
 	bool enabled = false;
 };
 
+constexpr int MAX_LIGHTS = 16;
+
 struct PointLight {
 	glm::vec3 position = {0.0f, 0.0f, 0.0f};
 	float _pad0 = 0.0f;
@@ -35,9 +37,16 @@ struct PointLight {
 	float _pad1 = 0.0f;
 };
 
+// Mirrors the Lights cbuffer on the GPU
+struct LightsUniform {
+	uint32_t numLights = 0;
+	uint32_t _pad[3] = {};
+	PointLight lights[MAX_LIGHTS] = {};
+};
+
 struct SceneLighting {
 	glm::vec3 ambientLight;
-	PointLight pointLights[9];
+	LightsUniform lightsUniform;
 	bool inited = false;
 };
 

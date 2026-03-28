@@ -1,3 +1,5 @@
+#include "Common.hlsl"
+
 Texture2D<float4> AlbedoTex : register(t0, space2);
 Texture2D<float4> NormalTex : register(t1, space2);
 Texture2D<float4> EmissiveTex : register(t2, space2);
@@ -9,11 +11,12 @@ SamplerState Sampler : register(s0, space2);
 struct Input {
   float3 ViewPos : POSITION0;
   float3 FragPos : POSITION1;
-  float3 LightsPos[9] : POSITION2;
+  float3 LightsPos[MAX_LIGHTS] : POSITION2;
   float3 Normal : NORMAL0;
   float3 Tangent : TANGENT0;
   float3 Bitangent : TANGENT1;
   float2 UV : TEXCOORD0;
+  uint NumLights : BLENDINDICES0;
 };
 
 struct TexSamples {
@@ -75,7 +78,7 @@ float4 main(Input input) : SV_Target0 {
 
   // accumulate light contributions
   float3 result = ambient;
-  for (int i = 0; i < 9; ++i) {
+  for (uint i = 0; i < input.NumLights; ++i) {
     result += BlinnPhong(samples, TBN, input.ViewPos, input.FragPos, input.LightsPos[i],
                          u_lightcolor);
   }

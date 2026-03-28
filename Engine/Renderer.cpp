@@ -1145,17 +1145,19 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
     static SceneLighting s_lighting;
     if (!s_lighting.inited) {
         s_lighting.inited = true;
-        s_lighting.pointLights[0].position = {  0.0f, 5.0f,  0.0f};
-        s_lighting.pointLights[1].position = { 17.0f, 5.0f,  0.0f};
-        s_lighting.pointLights[2].position = {-17.0f, 5.0f,  0.0f};
+        auto& lu = s_lighting.lightsUniform;
+        lu.lights[0].position = {  0.0f, 5.0f,  0.0f};
+        lu.lights[1].position = { 17.0f, 5.0f,  0.0f};
+        lu.lights[2].position = {-17.0f, 5.0f,  0.0f};
 
-        s_lighting.pointLights[3].position = {  0.0f, 5.0f,  7.0f};
-        s_lighting.pointLights[4].position = { 17.0f, 5.0f,  7.0f};
-        s_lighting.pointLights[5].position = {-17.0f, 5.0f,  7.0f};
-        
-        s_lighting.pointLights[6].position = {  0.0f, 5.0f, -7.0f};
-        s_lighting.pointLights[7].position = { 17.0f, 5.0f, -7.0f};
-        s_lighting.pointLights[8].position = {-17.0f, 5.0f, -7.0f};
+        lu.lights[3].position = {  0.0f, 5.0f,  7.0f};
+        lu.lights[4].position = { 17.0f, 5.0f,  7.0f};
+        lu.lights[5].position = {-17.0f, 5.0f,  7.0f};
+
+        lu.lights[6].position = {  0.0f, 5.0f, -7.0f};
+        lu.lights[7].position = { 17.0f, 5.0f, -7.0f};
+        lu.lights[8].position = {-17.0f, 5.0f, -7.0f};
+        lu.numLights = 9;
     }
     
     SDL_BindGPUGraphicsPipeline(renderPass, mPipelines[mRenderMode]);
@@ -1187,9 +1189,7 @@ void Renderer::RecordModelCommands(RenderPassContext& context) {
             
             SDL_PushGPUVertexUniformData(context.commandBuffer, 0, &context.cameraData, sizeof(CameraData));
             SDL_PushGPUVertexUniformData(context.commandBuffer, 1, &modelMatrix, sizeof(glm::mat4));
-            SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &s_lighting.pointLights, sizeof(s_lighting.pointLights));
-            //SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &s_lighting.pointLights[0].position, sizeof(glm::vec3));
-            //SDL_PushGPUFragmentUniformData(context.commandBuffer, 0, &s_lighting.pointLights[0].color, sizeof(glm::vec3));
+            SDL_PushGPUVertexUniformData(context.commandBuffer, 2, &s_lighting.lightsUniform, sizeof(LightsUniform));
     
             SDL_DrawGPUIndexedPrimitives(renderPass, static_cast<Uint32>(submesh.numIndices), 1, submesh.baseIndex, submesh.baseVertex, 0);
         }
